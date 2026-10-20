@@ -1,0 +1,44 @@
+{
+  "name": "docuforge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "dev": "concurrently -k -n web,worker -c cyan,magenta \"npm:dev:web\" \"npm:worker\"",
+    "dev:web": "next dev -p 3000",
+    "worker": "tsx --env-file-if-exists=.env src/worker/index.ts",
+    "build": "next build",
+    "start": "concurrently -k -n web,worker \"next start -p 3000\" \"npm:worker\"",
+    "studio": "remotion studio remotion/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test:pipeline": "tsx --env-file-if-exists=.env scripts/run-test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@remotion/bundler": "4.0.536",
+    "@remotion/google-fonts": "4.0.536",
+    "@remotion/media": "4.0.536",
+    "@remotion/renderer": "4.0.536",
+    "better-sqlite3": "^13.0.3",
+    "cheerio": "^1.2.0",
+    "next": "^16.4.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "4.0.536",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.536",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^10.0.6",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3"
+  }
+}

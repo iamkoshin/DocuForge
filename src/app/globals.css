@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #eef0ec;
+  --color-panel: #ffffff;
+  --color-ink: #1b1e21;
+  --color-sub: #5e646b;
+  --color-line: #d6dad3;
+  --color-cobalt: #2747c9;
+  --color-cobalt-soft: #e4e9fb;
+  --color-ok: #2f7d4f;
+  --color-ok-soft: #e1f0e6;
+  --color-warn: #96600f;
+  --color-warn-soft: #f8edd8;
+  --color-bad: #b8322a;
+  --color-bad-soft: #f8e1df;
+  --color-film: #26292d;
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-plex-serif), ui-serif, Georgia, serif;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+body {
+  font-feature-settings: "tnum" 0;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-cobalt);
+  outline-offset: 2px;
+}
+
+/* Film strip sprocket holes along the step tracker. */
+.sprockets {
+  background-image: radial-gradient(circle, var(--color-bg) 0 2.5px, transparent 3px);
+  background-size: 14px 8px;
+  background-repeat: repeat-x;
+  height: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
