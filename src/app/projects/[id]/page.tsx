@@ -11,7 +11,7 @@ import { Tracker } from "@/components/project/Tracker";
 import type { LogRow, Snapshot, StepRow } from "@/components/project/types";
 import { VideoPanel } from "@/components/project/VideoPanel";
 import { VisualsPicker } from "@/components/project/VisualsPicker";
-import { api, Button, fmtDuration, fmtUsd, Panel, StatusChip } from "@/components/ui";
+import { api, Button, fmtDuration, fmtUsd, inputCls, Panel, StatusChip } from "@/components/ui";
 
 type Tab = "overview" | "research" | "script" | "visuals" | "contact" | "video";
 const TABS: { id: Tab; label: string }[] = [
@@ -167,7 +167,7 @@ export default function ProjectPage() {
         {tab === "overview" && (
           <div className="flex flex-col gap-6">
             <Overview snap={snap} logs={logs} />
-            <Uploads projectId={id} />
+            <Uploads projectId={id} musicVolume={p.options.musicVolume ?? 0} rendered={step("render")?.status === "done"} busy={snap.busy} />
           </div>
         )}
         {tab === "research" && (
@@ -203,35 +203,77 @@ export default function ProjectPage() {
   );
 }
 
-function Uploads({ projectId }: { projectId: string }) {
+function Uploads({ projectId, musicVolume, rendered, busy }: { projectId: string; musicVolume: number; rendered: boolean; busy: boolean }) {
   const [list, setList] = useState<{ media: string[]; music: string[] }>({ media: [], music: [] });
   const [msg, setMsg] = useState<string | null>(null);
-  const load = () => api<typeof list>(`/api/projects/${projectId}/upload`).then(setList);
+  const [library, setLibrary] = useState<string[]>([]);
+  const [volume, setVolume] = useState(musicVolume);
+  const [saving, setSaving] = useState(false);
+  const saveVolume = async () => {
+    setSaving(true);
+    try {
+      await api(`/api/projects/${projectId}`, { method: "PATCH", json: { musicVolume: volume } });
+      if (rendered) await api(`/api/projects/${projectId}/retry`, { method: "POST", json: { step: "render" } });
+      setMsg(rendered ? "Re-rendering the video with the new music volume." : "Saved. It’s used when the video renders.");
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const load = () => {
+    api<typeof list>(`/api/projects/${projectId}/upload`).then(setList);
+    api<{ tracks: { name: string }[] }>("/api/music").then((d) => setLibrary(d.tracks.map((t) => t.name)), () => {});
+  };
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
-  const send = async (kind: "media" | "music", files: FileList | null) => {
-    if (!files?.length) return;
+  const send = async (kind: "media" | "music", files: FileList | null, fromLibrary?: string) => {
+    if (!files?.length && !fromLibrary) return;
     const fd = new FormData();
     fd.set("kind", kind);
-    [...files].forEach((f) => fd.append("files", f));
+    if (fromLibrary) fd.set("library", fromLibrary);
+    [...(files ?? [])].forEach((f) => fd.append("files", f));
     const r = await fetch(`/api/projects/${projectId}/upload`, { method: "POST", body: fd });
     const d = await r.json();
-    setMsg(r.ok ? `Uploaded ${d.saved.length} file(s). Retry ${kind === "media" ? "Visuals" : "Music"} to use ${d.saved.length > 1 ? "them" : "it"}.` : d.error);
+    setMsg(
+      r.ok
+        ? `Uploaded ${d.saved.length} file(s)${d.converted?.length ? ` (converted to JPG: ${d.converted.join(", ")})` : ""}${d.skipped?.length ? `. Couldn’t use ${d.skipped.join(", ")}` : ""}. Retry ${kind === "media" ? "Visuals" : "Music"} to use ${d.saved.length > 1 ? "them" : "it"}.`
+        : d.error,
+    );
     load();
   };
   return (
     <Panel className="p-4 grid gap-4 sm:grid-cols-2">
       <div>
         <h3 className="font-semibold text-sm mb-1">Your images and clips</h3>
-        <p className="text-xs text-sub mb-2">{list.media.length ? list.media.join(", ") : "None yet. Claude matches uploads to the scenes they fit."}</p>
-        <input type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" onChange={(e) => send("media", e.target.files)} className="text-sm text-sub file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:border-ink/40" />
+        <p className="text-xs text-sub mb-2">{list.media.length ? list.media.join(", ") : "None yet. Uploads are matched to the scenes they fit (any image format; HEIC, GIF… become JPG)."}</p>
+        <input type="file" multiple accept="image/*,.heic,.heif,video/mp4,video/quicktime,video/webm" onChange={(e) => send("media", e.target.files)} className="text-sm text-sub file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:border-ink/40" />
       </div>
       <div>
         <h3 className="font-semibold text-sm mb-1">Your music track</h3>
         <p className="text-xs text-sub mb-2">{list.music.length ? list.music.join(", ") : "None. Generated music is used (if your ElevenLabs plan includes it)."}</p>
+        {library.length > 0 && (
+          <select className={`${inputCls} mb-2`} value="" onChange={(e) => e.target.value && send("music", null, e.target.value)} aria-label="Use a saved track">
+            <option value="">Use a saved track…</option>
+            {library.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        )}
         <input type="file" accept="audio/*" onChange={(e) => send("music", e.target.files)} className="text-sm text-sub file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:border-ink/40" />
+        <h3 className="font-semibold text-sm mt-4 mb-1">Music volume</h3>
+        <div className="flex items-center gap-3">
+          <input type="range" min={-20} max={10} step={1} value={volume} onChange={(e) => setVolume(Number(e.target.value))} className="flex-1 accent-cobalt" aria-label="Music volume in dB" />
+          <span className="text-sm tabular w-14 text-right">{volume > 0 ? `+${volume}` : volume} dB</span>
+          <Button size="sm" busy={saving} disabled={busy || volume === musicVolume} onClick={saveVolume}>
+            {rendered ? "Re-render" : "Save"}
+          </Button>
+        </div>
+        <p className="text-xs text-sub mt-1">0 dB is the default mix. Only the final render runs again; no credits are spent.</p>
       </div>
       {msg && <p className="sm:col-span-2 text-sm text-sub">{msg}</p>}
     </Panel>

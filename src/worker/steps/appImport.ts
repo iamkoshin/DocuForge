@@ -1,10 +1,10 @@
 // "Claude app" mode: the research + script are produced in the Claude app (e.g. on a Pro plan) from a
-// prompt DocuForge generates, then pasted back. Nothing here calls the Claude API.
+// prompt Narrative generates, then pasted back. Nothing here calls the Claude API.
 import * as z from "zod";
 import { targetWords } from "@/lib/cost";
 import { SCENE_TYPES, SceneDataSchema, SfxCueSchema, VISUAL_KINDS, type ProjectOptions, type Research, type Script } from "@/lib/schemas";
 import { mergeAnnotations, OWN_SCRIPT_RULES, ownScriptBrief, splitOwnScript } from "@/lib/ownScript";
-import { SCENE_SECONDS, SCENE_TYPE_GUIDE, sfxGuide, structureGuide, VISUAL_GUIDE, WRITING_RULES } from "./script";
+import { SCENE_SECONDS, SCENE_TYPE_GUIDE, sfxGuide, structureGuide, styleGuide, VISUAL_GUIDE, WRITING_RULES } from "./script";
 
 export interface AppImport {
   research: Research;
@@ -102,6 +102,8 @@ ${VISUAL_GUIDE}
 
 ${sfxGuide(o.sfxLevel)}
 
+${styleGuide(o.theme)}
+
 Scene-specific fields go in "data" (leave it {} when the scene type needs none). Allowed sceneType values: ${SCENE_TYPES.join(", ")}. Allowed visual.kind values: ${VISUAL_KINDS.join(", ")}. The final scene is an EndCard whose data has "statement" (closing line) and "footnote" (current status with date).
 
 PART 3 — YOUTUBE
@@ -143,6 +145,8 @@ ${SCENE_TYPE_GUIDE}
 ${VISUAL_GUIDE}
 
 ${sfxGuide(o.sfxLevel)}
+
+${styleGuide(o.theme)}
 
 Scene-specific fields go in "data" (leave it {} when the scene type needs none). Allowed sceneType values: ${SCENE_TYPES.join(", ")}. Allowed visual.kind values: ${VISUAL_KINDS.join(", ")}. The final scene is an EndCard whose data has "statement" (closing line) and "footnote" (current status with date).
 

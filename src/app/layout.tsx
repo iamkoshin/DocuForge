@@ -7,7 +7,7 @@ const sans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "
 const serif = IBM_Plex_Serif({ subsets: ["latin"], weight: ["400", "500", "600"], style: ["normal", "italic"], variable: "--font-plex-serif" });
 
 export const metadata: Metadata = {
-  title: "DocuForge",
+  title: "Narrative",
   description: "Turn a topic into a finished documentary video",
 };
 

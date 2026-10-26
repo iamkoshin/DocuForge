@@ -2,6 +2,7 @@ import React from "react";
 import { AbsoluteFill, Easing, Img, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { T } from "../../src/lib/timing";
 import { useLayout, useTheme } from "../components/layout";
+import { isLight } from "../themes";
 import { gradeFilter, KenBurns } from "../components/Media";
 import type { SceneProps } from "./Typography";
 
@@ -39,8 +40,8 @@ export const NameReveal: React.FC<SceneProps> = ({ scene }) => {
           transform: `translateX(${(1 - s) * -40 * u}px)`,
         }}
       >
-        <div style={{ width: 90 * u * s, height: 6 * u, backgroundColor: theme.accent, marginBottom: 26 * u }} />
-        <div style={{ fontFamily: theme.serif, fontStyle: "italic", color: theme.fg, fontSize: Math.min(130, ((vertical ? width : width * 0.42) / Math.max(4, name.length)) * 1.7) * u, lineHeight: 0.98 }}>{name}</div>
+        {theme.style !== "editorial" && <div style={{ width: 90 * u * s, height: 6 * u, backgroundColor: theme.accent, marginBottom: 26 * u }} />}
+        <div style={{ fontFamily: theme.serif, fontStyle: theme.serifStyle, color: theme.fg, fontSize: Math.min(130, ((vertical ? width : width * 0.42) / Math.max(4, name.length)) * 1.7) * u, lineHeight: 0.98 }}>{name}</div>
         {scene.data.role && (
           <div style={{ fontFamily: theme.mono, color: theme.muted, fontSize: 30 * u, marginTop: 22 * u, letterSpacing: "0.08em", textTransform: "uppercase", opacity: interpolate(frame, [snap + 8, snap + 20], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) }}>
             {scene.data.role}
@@ -65,10 +66,11 @@ export const PhotoStack: React.FC<SceneProps> = ({ scene }) => {
   const spots = vertical
     ? [{ x: 0.5, y: 0.3, r: -4 }, { x: 0.46, y: 0.58, r: 5 }, { x: 0.55, y: 0.42, r: -2 }, { x: 0.5, y: 0.7, r: 3 }]
     : [{ x: 0.3, y: 0.46, r: -6 }, { x: 0.68, y: 0.44, r: 5 }, { x: 0.5, y: 0.55, r: -2 }, { x: 0.42, y: 0.4, r: 8 }];
+  const lift = theme.style === "editorial" ? -0.06 * height : 0; // room for the running caption
   const drift = interpolate(frame, [0, scene.durationFrames], [1, 1.06], { easing: Easing.inOut(Easing.quad) });
   return (
     <AbsoluteFill style={{ backgroundColor: theme.bg }}>
-      <AbsoluteFill style={{ background: `radial-gradient(ellipse at 50% 40%, ${theme.id === "clean-light" ? "#E7E9EE" : "#2a2622"} 0%, ${theme.bg} 75%)` }} />
+      <AbsoluteFill style={{ background: `radial-gradient(ellipse at 50% 40%, ${isLight(theme.bg) ? "#F6F3EE" : "#2a2622"} 0%, ${theme.bg} 75%)` }} />
       <AbsoluteFill style={{ transform: `scale(${drift})` }}>
         {photos.map((p, i) => {
           const start = Math.round(times[i] * fps);
@@ -84,12 +86,12 @@ export const PhotoStack: React.FC<SceneProps> = ({ scene }) => {
               style={{
                 position: "absolute",
                 left: spot.x * width - w / 2,
-                top: spot.y * height - h / 2,
+                top: spot.y * height - h / 2 + lift,
                 width: w,
                 padding: 14 * u,
                 paddingBottom: captions[i] ? 64 * u : 14 * u,
                 backgroundColor: "#F4F1EA",
-                boxShadow: `0 ${30 * u}px ${60 * u}px rgba(0,0,0,0.55)`,
+                boxShadow: `0 ${30 * u}px ${60 * u}px rgba(0,0,0,${isLight(theme.bg) ? 0.22 : 0.55})`,
                 transform: `translateY(${(1 - drop) * -height * 0.6}px) rotate(${spot.r + (1 - drop) * 12}deg) scale(${1 + (1 - drop) * 0.2})`,
                 opacity: frame >= start ? 1 : 0,
               }}
@@ -101,7 +103,7 @@ export const PhotoStack: React.FC<SceneProps> = ({ scene }) => {
                   <KenBurns asset={p} durationInFrames={scene.durationFrames} />
                 )}
               </div>
-              {captions[i] && <div style={{ position: "absolute", left: 18 * u, right: 18 * u, bottom: 16 * u, fontFamily: theme.mono, color: "#2b2620", fontSize: 24 * u, lineHeight: 1.2 }}>{captions[i]}</div>}
+              {captions[i] && <div style={{ position: "absolute", left: 18 * u, right: 18 * u, bottom: 16 * u, fontFamily: theme.style === "editorial" ? theme.sans : theme.mono, fontWeight: theme.style === "editorial" ? 700 : 400, color: "#2b2620", fontSize: 24 * u, lineHeight: 1.2 }}>{captions[i]}</div>}
             </div>
           );
         })}

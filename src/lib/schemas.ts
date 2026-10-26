@@ -3,7 +3,7 @@ import * as z from "zod";
 // ---------- Enums ----------
 export const FORMATS = ["16:9", "9:16"] as const;
 export const TONES = ["Investigative", "Dramatic", "Calm explainer", "Upbeat"] as const;
-export const THEMES = ["investigative", "clean-light", "retro-archive"] as const;
+export const THEMES = ["investigative", "editorial", "retro-archive"] as const;
 export const SFX_LEVELS = ["off", "subtle", "normal", "punchy"] as const;
 export const SCENE_TYPES = [
   "KineticCaption",
@@ -20,7 +20,8 @@ export const SCENE_TYPES = [
   "EndCard",
 ] as const;
 export const VISUAL_KINDS = ["person", "event", "place", "stock", "graphic"] as const;
-export const STEPS = ["research", "script", "review", "voice", "music", "sfx", "visuals", "preview", "render", "outputs"] as const;
+// visuals runs before sfx, so sound effects can land on every shot change.
+export const STEPS = ["research", "script", "review", "voice", "music", "visuals", "sfx", "preview", "render", "outputs", "shorts"] as const;
 export type StepName = (typeof STEPS)[number];
 export type SceneType = (typeof SCENE_TYPES)[number];
 
@@ -34,13 +35,15 @@ export const ProjectOptionsSchema = z.object({
   voiceName: z.string().default(""),
   language: z.string().default("English"),
   tone: z.enum(TONES).default("Investigative"),
-  theme: z.enum(THEMES).default("investigative"),
+  theme: z.preprocess((v) => (v === "clean-light" ? "editorial" : v), z.enum(THEMES).default("investigative")), // clean-light was replaced by editorial
   musicMood: z.string().default("tense"),
+  // Music level relative to the default mix, in dB (applied at render time, so changing it only re-renders).
+  musicVolume: z.number().min(-30).max(12).default(0),
   sfxLevel: z.enum(SFX_LEVELS).default("normal"),
   sourceUrls: z.array(z.string().url()).default([]),
   pauseForApproval: z.boolean().default(true),
   model: z.string().optional(),
-  // "api": DocuForge calls the Claude API. "app": you run the research+script prompt in the Claude app
+  // "api": Narrative calls the Claude API. "app": you run the research+script prompt in the Claude app
   // (e.g. on a Pro plan) and paste the reply back; no Claude API calls are made for this project.
   scriptSource: z.enum(["api", "app"]).default("api"),
   // The creator's own narration. When set, Claude never writes or rewrites the script: it researches the
@@ -142,7 +145,7 @@ export const SceneSchema = z.object({
   claimIds: z.array(z.string()),
   data: SceneDataSchema,
   climax: z.boolean().optional(),
-  unverified: z.boolean().optional().describe("Set by DocuForge, not by Claude: the scene cited claims that failed verification"),
+  unverified: z.boolean().optional().describe("Set by Narrative, not by Claude: the scene cited claims that failed verification"),
 });
 export type Scene = z.infer<typeof SceneSchema>;
 
@@ -181,10 +184,13 @@ export interface Candidate {
   width: number;
   height: number;
   durationSec?: number;
-  provider: "upload" | "wikimedia" | "article" | "web" | "pixabay";
+  provider: "upload" | "wikimedia" | "article" | "web" | "pixabay" | "unsplash";
   sourcePage?: string;
   originalUrl?: string;
   author?: string;
+  authorUrl?: string; // Unsplash: photographer's profile (with UTM parameters)
+  previewUrl?: string; // Unsplash: the picker shows this hotlinked image instead of the local thumbnail
+  downloadLocation?: string; // Unsplash: called once when the photo is used in a rendered video
   license?: string;
   caption?: string;
   score?: number; // 0-10 from vision check (or tag match for stock)
@@ -199,6 +205,12 @@ export interface SceneVisual {
   chosen: string[]; // 0-2 candidate ids
   missing?: boolean;
   fallbackType?: SceneType;
+  nodes?: NodeVisual[]; // FlowDiagram: one photo per box, in data.nodes order
+}
+export interface NodeVisual {
+  label: string;
+  candidates: string[];
+  chosen: string | null;
 }
 export interface VisualsResult {
   candidates: Record<string, Candidate>;
@@ -212,6 +224,7 @@ export interface Credit {
   sourcePage?: string;
   originalUrl?: string;
   author?: string;
+  authorUrl?: string;
   license?: string;
 }
 
@@ -251,6 +264,7 @@ export interface RenderScene {
   audioOffsetFrames: number; // when voice begins within the scene
   words: WordTiming[]; // seconds relative to the scene start (already offset)
   assets: RenderAsset[];
+  nodeAssets?: (RenderAsset | null)[]; // FlowDiagram: the photo for each box (null = no photo)
   data: SceneData;
   climax?: boolean;
 }
@@ -273,9 +287,10 @@ export type RenderProps = {
   sfx: RenderSfx[];
   music?: { url: string; durationFrames: number };
   speech: [number, number][]; // frames where voice is active
-  dropouts: [number, number][]; // frames where music drops out (silence before big reveal)
   musicBaseDb: number;
   pauseBoostDb: number;
+  /** Shorts only: hook line shown at the top for the first seconds. */
+  banner?: string;
   // Thumbnail-only fields
   thumbnail?: { text: string; imageUrl?: string; focus?: { x: number; y: number; w: number; h: number } };
 };

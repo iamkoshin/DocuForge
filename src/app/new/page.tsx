@@ -1,9 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { api, Button, ErrorNote, Field, fmtUsd, inputCls, Panel } from "@/components/ui";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { api, Button, ErrorNote, Field, fileUrl, fmtUsd, inputCls, Panel } from "@/components/ui";
 import type { Estimate } from "@/lib/cost";
+import type { MusicTrack } from "@/lib/music";
 import { ownScriptMinutes, ownScriptWords } from "@/lib/ownScript";
 
 interface Voice {
@@ -13,14 +14,14 @@ interface Voice {
   labels?: Record<string, string>;
 }
 interface SettingsResp {
-  settings: { defaultVoiceId: string; defaultTheme: string; defaultSfxLevel: string; model: string };
+  settings: { defaultVoiceId: string; defaultTheme: string; defaultSfxLevel: string; model: string; photoCheck: string };
   keys: Record<string, boolean>;
   models: { id: string; label: string }[];
 }
 
 const THEMES = [
   { id: "investigative", name: "Investigative", colors: ["#0B0B0B", "#F2F2EE", "#ECE6DA", "#E0241B"] },
-  { id: "clean-light", name: "Clean Light", colors: ["#F5F6F8", "#14171C", "#FFFFFF", "#2563EB"] },
+  { id: "editorial", name: "Editorial", colors: ["#0A0A0A", "#ECE8E1", "#FFFFFF", "#E3141B"] },
   { id: "retro-archive", name: "Retro Archive", colors: ["#1E1710", "#F1E4C8", "#E9DABA", "#C2502E"] },
 ];
 const TONES = ["Investigative", "Dramatic", "Calm explainer", "Upbeat"] as const;
@@ -32,11 +33,20 @@ const SFX = [
   { id: "punchy", label: "Punchy" },
 ];
 
-export default function NewVideo() {
+// useSearchParams needs a Suspense boundary for the production build.
+export default function NewVideoPage() {
+  return (
+    <Suspense>
+      <NewVideo />
+    </Suspense>
+  );
+}
+
+function NewVideo() {
   const router = useRouter();
+  const from = useSearchParams().get("from"); // "New video with these settings" on a finished video
   const [topic, setTopic] = useState("");
   const [angle, setAngle] = useState("");
-  const [minutes, setMinutes] = useState(1);
   const [format, setFormat] = useState<"16:9" | "9:16">("16:9");
   const [voices, setVoices] = useState<Voice[]>([]);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -50,37 +60,55 @@ export default function NewVideo() {
   const [pause, setPause] = useState(true);
   const [model, setModel] = useState("");
   const [scriptSource, setScriptSource] = useState<"api" | "app">("api");
-  const [writeOwn, setWriteOwn] = useState(false);
   const [ownScript, setOwnScript] = useState("");
-  const ownWords = writeOwn ? ownScriptWords(ownScript) : 0;
-  const length = writeOwn ? ownScriptMinutes(ownScript, language) : minutes;
+  const ownWords = ownScriptWords(ownScript);
+  const length = ownScriptMinutes(ownScript, language);
   const [models, setModels] = useState<SettingsResp["models"]>([]);
+  const [gemini, setGemini] = useState(false);
   const [media, setMedia] = useState<File[]>([]);
   const [music, setMusic] = useState<File | null>(null);
+  const [library, setLibrary] = useState<MusicTrack[]>([]);
+  const [libraryTrack, setLibraryTrack] = useState("");
+  const ownTrack = !!music || !!libraryTrack;
   const [sfxFiles, setSfxFiles] = useState<File[]>([]);
   const [est, setEst] = useState<(Estimate & { threshold: number }) | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Estimate | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState<string | null>(null);
 
   useEffect(() => {
     api<SettingsResp>("/api/settings").then((d) => {
-      setTheme(d.settings.defaultTheme || "investigative");
+      setTheme(d.settings.defaultTheme === "clean-light" ? "editorial" : d.settings.defaultTheme || "investigative");
       setSfxLevel(d.settings.defaultSfxLevel || "normal");
       setModel(d.settings.model);
       setModels(d.models);
+      setGemini(d.keys.GEMINI_API_KEY && d.settings.photoCheck !== "captions");
       if (d.settings.defaultVoiceId) setVoiceId(d.settings.defaultVoiceId);
       // Last choice wins; otherwise use the Claude app when there is no API key.
       let saved: string | null = null;
       try {
-        saved = localStorage.getItem("docuforge.scriptSource");
+        saved = localStorage.getItem("narrative.scriptSource");
       } catch {
         /* storage unavailable */
       }
       setScriptSource(saved === "api" || saved === "app" ? saved : d.keys.ANTHROPIC_API_KEY ? "api" : "app");
+      // After the defaults, so the copied video's settings win. Topic, script, notes, sources and uploads start empty.
+      if (from) api<{ project: { options: Record<string, unknown> } }>(`/api/projects/${from}`).then(({ project: { options: o } }) => {
+        if (o.format === "16:9" || o.format === "9:16") setFormat(o.format);
+        if (typeof o.voiceId === "string" && o.voiceId) setVoiceId(o.voiceId);
+        if (typeof o.language === "string") setLanguage(o.language);
+        if (TONES.includes(o.tone as (typeof TONES)[number])) setTone(o.tone as (typeof TONES)[number]);
+        if (typeof o.theme === "string") setTheme(o.theme === "clean-light" ? "editorial" : o.theme);
+        if (typeof o.musicMood === "string") setMood(o.musicMood);
+        if (typeof o.sfxLevel === "string") setSfxLevel(o.sfxLevel);
+        if (typeof o.pauseForApproval === "boolean") setPause(o.pauseForApproval);
+        if (typeof o.model === "string" && o.model) setModel(o.model);
+        if (o.scriptSource === "api" || o.scriptSource === "app") setScriptSource(o.scriptSource);
+      }, () => {});
     });
+    api<{ tracks: MusicTrack[] }>("/api/music").then((d) => setLibrary(d.tracks), () => {});
     api<Voice[]>("/api/voices").then(
       (v) => {
         setVoices(v);
@@ -92,24 +120,21 @@ export default function NewVideo() {
 
   useEffect(() => {
     const t = setTimeout(() => {
-      api<Estimate & { threshold: number }>("/api/estimate", { method: "POST", json: { minutes: length, sfxLevel, musicMood: mood, model, scriptSource } }).then(setEst, () => {});
+      api<Estimate & { threshold: number }>("/api/estimate", { method: "POST", json: { minutes: length, sfxLevel, musicMood: ownTrack ? "none" : mood, model, scriptSource } }).then(setEst, () => {});
     }, 250);
     return () => clearTimeout(t);
-  }, [length, sfxLevel, mood, model, scriptSource]);
+  }, [length, sfxLevel, mood, model, scriptSource, ownTrack]);
 
   const voice = voices.find((v) => v.voice_id === voiceId);
-  const preview = () => {
-    if (!voice?.preview_url) return;
-    if (playing) {
-      audio.current?.pause();
-      setPlaying(false);
-      return;
-    }
+  const preview = (url?: string) => {
+    if (!url) return;
     audio.current?.pause();
-    audio.current = new Audio(voice.preview_url);
-    audio.current.onended = () => setPlaying(false);
-    audio.current.play().then(() => setPlaying(true), () => setPlaying(false));
+    if (playing === url) return setPlaying(null);
+    audio.current = new Audio(url);
+    audio.current.onended = () => setPlaying(null);
+    audio.current.play().then(() => setPlaying(url), () => setPlaying(null));
   };
+  const trackUrl = libraryTrack ? fileUrl(library.find((t) => t.name === libraryTrack)?.file ?? "") : undefined;
 
   const submit = async (confirmed = false) => {
     setError(null);
@@ -120,26 +145,37 @@ export default function NewVideo() {
     const bad = urls.filter((u) => !/^https?:\/\/\S+\.\S+/.test(u));
     if (bad.length) return setError(`These source links aren't valid URLs: ${bad.join(", ")}`);
     if (!voiceId) return setError("Choose a voice. Voices load from ElevenLabs once ELEVENLABS_API_KEY is set.");
-    if (writeOwn && !ownWords) return setError("Paste your script, or choose “Claude writes it”.");
+    if (!ownWords) return setError("Paste your script.");
     setBusy(true);
     try {
-      const options = { topic, angle, minutes: length, ownScript: writeOwn ? ownScript : "", format, voiceId, voiceName: voice?.name ?? "", language, tone, theme, musicMood: mood, sfxLevel, sourceUrls: urls, pauseForApproval: pause, model, scriptSource };
+      const options = { topic, angle, minutes: length, ownScript, format, voiceId, voiceName: voice?.name ?? "", language, tone, theme, musicMood: mood, sfxLevel, sourceUrls: urls, pauseForApproval: pause, model, scriptSource };
       const { id } = await api<{ id: string }>("/api/projects", { method: "POST", json: { options, confirm: confirmed } });
+      const problems: string[] = [];
       const upload = async (kind: string, files: File[]) => {
         if (!files.length) return;
         const fd = new FormData();
         fd.set("kind", kind);
         files.forEach((f) => fd.append("files", f));
-        await fetch(`/api/projects/${id}/upload`, { method: "POST", body: fd });
+        const r = await fetch(`/api/projects/${id}/upload`, { method: "POST", body: fd });
+        const d = (await r.json().catch(() => ({}))) as { error?: string; skipped?: string[] };
+        if (!r.ok) problems.push(d.error ?? `Uploading your ${kind} failed.`);
+        else if (d.skipped?.length) problems.push(`Couldn’t use ${d.skipped.join(", ")}.`);
       };
       await upload("media", media);
       if (music) await upload("music", [music]);
+      else if (libraryTrack) {
+        const fd = new FormData();
+        fd.set("kind", "music");
+        fd.set("library", libraryTrack);
+        await fetch(`/api/projects/${id}/upload`, { method: "POST", body: fd });
+      }
       if (sfxFiles.length) {
         const fd = new FormData();
         sfxFiles.forEach((f) => fd.append("files", f));
         fd.set("tags", "uploaded");
         await fetch("/api/sfx", { method: "POST", body: fd });
       }
+      if (problems.length) alert(`The video was created, but some uploads had problems:\n\n${problems.join("\n")}\n\nYou can upload them again on the project page.`);
       router.push(`/projects/${id}`);
     } catch (e) {
       const err = e as Error & { status?: number; data?: { estimate?: Estimate } };
@@ -164,52 +200,25 @@ export default function NewVideo() {
             <Field label="Topic" htmlFor="topic">
               <input id="topic" required minLength={2} className={`${inputCls} text-base`} placeholder="The collapse of FTX" value={topic} onChange={(e) => setTopic(e.target.value)} />
             </Field>
-            <Field label="Script">
-              <div className="inline-flex rounded-md border border-line overflow-hidden w-fit">
-                {(
-                  [
-                    [false, "Claude writes it"],
-                    [true, "I’ll write my own"],
-                  ] as const
-                ).map(([own, label]) => (
-                  <button type="button" key={label} onClick={() => setWriteOwn(own)} aria-pressed={writeOwn === own} className={`px-3 py-1.5 text-sm border-r last:border-r-0 border-line ${writeOwn === own ? "bg-ink text-white" : "bg-panel"}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
+            <Field
+              label="Your script"
+              htmlFor="ownScript"
+              hint={
+                <>
+                  Exactly what the narrator says; your words are never rewritten. Start a line with <code>#</code> to begin a chapter (the heading isn’t spoken). Claude researches and sources the facts in it, flags lines it can’t verify, and plans visuals, sound and YouTube metadata around it.
+                  {ownWords > 0 && (
+                    <span className="block mt-1 tabular">
+                      {ownWords} words ≈ {length} min
+                    </span>
+                  )}
+                </>
+              }
+            >
+              <textarea id="ownScript" rows={12} className={inputCls} placeholder={"In November 2022, eight billion dollars vanished in a week.\n\n# The rise\nSam Bankman-Fried…"} value={ownScript} onChange={(e) => setOwnScript(e.target.value)} />
             </Field>
-            {writeOwn && (
-              <Field
-                label="Your script"
-                htmlFor="ownScript"
-                hint={
-                  <>
-                    Exactly what the narrator says; your words are never rewritten. Start a line with <code>#</code> to begin a chapter (the heading isn’t spoken). Claude researches and sources the facts in it, flags lines it can’t verify, and plans visuals, sound and YouTube metadata around it.
-                    {ownWords > 0 && (
-                      <span className="block mt-1 tabular">
-                        {ownWords} words ≈ {length} min
-                      </span>
-                    )}
-                  </>
-                }
-              >
-                <textarea id="ownScript" rows={12} className={inputCls} placeholder={"In November 2022, eight billion dollars vanished in a week.\n\n# The rise\nSam Bankman-Fried…"} value={ownScript} onChange={(e) => setOwnScript(e.target.value)} />
-              </Field>
-            )}
-            <Field label={writeOwn ? "Notes for the research" : "Angle or key points to include"} hint={writeOwn ? "Optional. Anything the research should look into or double-check." : "Optional. What should the video focus on or make sure to cover?"} htmlFor="angle">
-              <textarea id="angle" rows={3} className={inputCls} placeholder={writeOwn ? "Double-check the deposit figures and find photos of the Bahamas office." : "Focus on how customer deposits were moved to Alameda, and where the case stands today."} value={angle} onChange={(e) => setAngle(e.target.value)} />
+            <Field label="Notes for the research" hint="Optional. Anything the research should look into or double-check." htmlFor="angle">
+              <textarea id="angle" rows={3} className={inputCls} placeholder="Double-check the deposit figures and find photos of the Bahamas office." value={angle} onChange={(e) => setAngle(e.target.value)} />
             </Field>
-            {!writeOwn && (
-            <Field label="Length" hint="Script length, voiceover and pacing are sized to this.">
-              <div className="flex items-center gap-4">
-                <input type="range" min={0.5} max={20} step={0.5} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="flex-1 accent-cobalt" aria-label="Length in minutes" />
-                <div className="flex items-center gap-2">
-                  <input type="number" min={0.5} max={20} step={0.5} value={minutes} onChange={(e) => setMinutes(Math.min(20, Math.max(0.5, Number(e.target.value) || 0.5)))} className={`${inputCls} w-20 tabular`} aria-label="Minutes" />
-                  <span className="text-sm text-sub">min</span>
-                </div>
-              </div>
-            </Field>
-            )}
             <Field label="Format">
               <div className="flex gap-3">
                 {(["16:9", "9:16"] as const).map((f) => (
@@ -227,12 +236,12 @@ export default function NewVideo() {
               </div>
             </Field>
             <div>
-              <Field label={writeOwn ? "Who does the research and scene planning" : "Who writes the research and script"}>
+              <Field label="Who does the research and scene planning">
                 <div className="grid gap-2 sm:grid-cols-2">
                   {(
                     [
-                      { id: "app", title: "Claude app (your Pro plan)", body: "Free. You copy a prompt into claude.ai and paste the reply back. Photos are matched by caption, so check them before rendering." },
-                      { id: "api", title: "Claude API", body: writeOwn ? "Fully automatic, with photo verification. Needs API credit." : "Fully automatic, with fact-check, photo verification and length fitting. Needs API credit." },
+                      { id: "app", title: "Claude app (your Pro plan)", body: gemini ? "Free. You copy a prompt into claude.ai and paste the reply back. Photos are checked by Gemini (free)." : "Free. You copy a prompt into claude.ai and paste the reply back. Photos are matched by caption, so check them before rendering." },
+                      { id: "api", title: "Claude API", body: "Fully automatic, with photo verification. Needs API credit." },
                     ] as const
                   ).map((o) => (
                     <label key={o.id} className={`flex gap-3 rounded-md border px-3 py-2.5 cursor-pointer text-sm ${scriptSource === o.id ? "border-cobalt bg-cobalt-soft" : "border-line bg-panel"}`}>
@@ -244,7 +253,7 @@ export default function NewVideo() {
                         onChange={() => {
                           setScriptSource(o.id);
                           try {
-                            localStorage.setItem("docuforge.scriptSource", o.id);
+                            localStorage.setItem("narrative.scriptSource", o.id);
                           } catch {
                             /* storage unavailable */
                           }
@@ -289,8 +298,8 @@ export default function NewVideo() {
                       </option>
                     ))}
                   </select>
-                  <Button type="button" onClick={preview} disabled={!voice?.preview_url} aria-label={playing ? "Stop preview" : "Play voice preview"}>
-                    {playing ? "■" : "▶"}
+                  <Button type="button" onClick={() => preview(voice?.preview_url)} disabled={!voice?.preview_url} aria-label={playing && playing === voice?.preview_url ? "Stop preview" : "Play voice preview"}>
+                    {playing && playing === voice?.preview_url ? "■" : "▶"}
                   </Button>
                 </div>
               </Field>
@@ -354,10 +363,25 @@ export default function NewVideo() {
                 <textarea id="sources" rows={3} className={inputCls} placeholder="https://www.sec.gov/…" value={sources} onChange={(e) => setSources(e.target.value)} />
               </Field>
             </div>
-            <Field label="Your images and clips" hint={media.length ? `${media.length} file(s) — matched to scenes automatically` : "jpg, png, webp, mp4, mov"}>
-              <input type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" onChange={(e) => setMedia([...(e.target.files ?? [])])} className="text-sm text-sub file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:border-ink/40" />
+            <Field label="Your images and clips" hint={media.length ? `${media.length} file(s) — matched to scenes automatically` : "Any image format (HEIC, GIF… become JPG), mp4, mov"}>
+              <input type="file" multiple accept="image/*,.heic,.heif,video/mp4,video/quicktime,video/webm" onChange={(e) => setMedia([...(e.target.files ?? [])])} className="text-sm text-sub file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:border-ink/40" />
             </Field>
-            <Field label="Your music track" hint={music ? "Used instead of generated music" : "Optional mp3, wav or m4a"}>
+            <Field label="Your music track" hint={music ? "Used instead of generated music, and saved to your music library" : libraryTrack ? "Used instead of generated music" : "Optional. Pick a saved track or upload one (mp3, wav, m4a)."}>
+              {library.length > 0 && (
+                <div className="flex gap-2">
+                  <select className={inputCls} value={libraryTrack} onChange={(e) => setLibraryTrack(e.target.value)} disabled={!!music} aria-label="Saved music">
+                    <option value="">Generate new music</option>
+                    {library.map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button type="button" onClick={() => preview(trackUrl)} disabled={!libraryTrack || !!music} aria-label={playing && playing === trackUrl ? "Stop preview" : "Play saved track"}>
+                    {playing && playing === trackUrl ? "■" : "▶"}
+                  </Button>
+                </div>
+              )}
               <input type="file" accept="audio/*" onChange={(e) => setMusic(e.target.files?.[0] ?? null)} className="text-sm text-sub file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:border-ink/40" />
             </Field>
             <Field label="Your sound effects" hint="Added to the sound library for every video">

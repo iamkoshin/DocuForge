@@ -20,7 +20,7 @@ const RECIPES: Record<SfxCategory, (d: number) => string> = {
   misc: (d) => `sine=f=600:d=${d}`,
 };
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "docuforge-fake-"));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "narrative-fake-"));
 for (const s of STARTER_PACK) {
   const have = (db().prepare("SELECT COUNT(*) n FROM sfx WHERE key = ?").get(s.key) as { n: number }).n;
   if (have) continue;
@@ -34,7 +34,7 @@ db().prepare("UPDATE sfx SET source = 'starter' WHERE tags LIKE '%placeholder%'"
 const [musicOut, secs] = process.argv.slice(2);
 if (musicOut) {
   const d = Number(secs ?? 60);
-  // A slow minor-chord pad with gentle pulse: enough to hear ducking and the climax drop-out.
+  // A slow minor-chord pad with gentle pulse: enough to hear ducking under hits.
   const expr = `0.12*sin(2*PI*110*t)+0.09*sin(2*PI*130.8*t)+0.08*sin(2*PI*164.8*t)+0.05*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*0.5*t))`;
   await run("ffmpeg", ["-y", "-f", "lavfi", "-i", `aevalsrc='${expr}':d=${d}:s=44100`, "-af", "lowpass=f=900", "-c:a", "libmp3lame", "-b:a", "160k", musicOut]);
   console.log("music bed", musicOut);

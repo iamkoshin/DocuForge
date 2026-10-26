@@ -70,7 +70,7 @@ async function sapi(text: string, wav: string) {
 }
 
 const id = createProject(
-  { topic: research.topic, angle: "", minutes: 0.5, format, voiceId: "offline-sapi", voiceName: "Windows SAPI (offline test)", language: "English", tone: "Investigative", theme, musicMood: mix ? "tense" : "none", sfxLevel: mix ? "punchy" : "off", sourceUrls: [], pauseForApproval: false, scriptSource: "api", ownScript: "" },
+  { topic: research.topic, angle: "", minutes: 0.5, format, voiceId: "offline-sapi", voiceName: "Windows SAPI (offline test)", language: "English", tone: "Investigative", theme, musicMood: mix ? "tense" : "none", musicVolume: 0, sfxLevel: mix ? "punchy" : "off", sourceUrls: [], pauseForApproval: false, scriptSource: "api", ownScript: "" },
   0,
 );
 updateProject(id, { title: script.title });

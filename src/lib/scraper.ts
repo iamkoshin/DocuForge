@@ -4,7 +4,7 @@ import { DomainLimiter, fetchOk, USER_AGENT, withRetry } from "./http";
 const limiter = new DomainLimiter(2); // max ~2 requests/second per domain
 const wmLimiter = new DomainLimiter(1); // Wikimedia asks bots to go slower
 // Wikimedia throttles anonymous browser-like UAs; it wants an identifying one (https://meta.wikimedia.org/wiki/User-Agent_policy).
-export const WM_UA = "DocuForge/0.1 (local documentary tool; contact: see README) node-fetch";
+export const WM_UA = "Narrative/0.1 (local documentary tool; contact: see README) node-fetch";
 const isWikimedia = (u: string) => /(^|\.)(wikimedia|wikipedia)\.org$/.test(new URL(u).hostname);
 
 export interface PageImage {

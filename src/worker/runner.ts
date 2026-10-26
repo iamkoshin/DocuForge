@@ -9,6 +9,7 @@ import { researchStep } from "./steps/research";
 import { reviewStep } from "./steps/review";
 import { scriptStep } from "./steps/script";
 import { sfxStep } from "./steps/sfx";
+import { shortsStep } from "./steps/shorts";
 import { visualsStep } from "./steps/visuals";
 import { voiceStep } from "./steps/voice";
 
@@ -23,6 +24,7 @@ export const STEP_DEFS: Record<StepName, StepDef> = {
   preview: previewStep,
   render: renderStep,
   outputs: outputsStep,
+  shorts: shortsStep,
 };
 
 /**

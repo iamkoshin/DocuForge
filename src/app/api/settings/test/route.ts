@@ -1,13 +1,15 @@
 import { json, route } from "@/lib/api";
 import { testAnthropic } from "@/lib/clients/anthropic";
+import { testGemini } from "@/lib/clients/gemini";
 import { getSubscription, listVoices, missingPermission } from "@/lib/clients/elevenlabs";
 import { HttpError } from "@/lib/http";
 import { testPixabay } from "@/lib/clients/pixabay";
+import { testUnsplash } from "@/lib/clients/unsplash";
 
 export const dynamic = "force-dynamic";
 
 export const POST = route(async (req: Request) => {
-  const { provider } = (await req.json()) as { provider: "anthropic" | "elevenlabs" | "pixabay" };
+  const { provider } = (await req.json()) as { provider: "anthropic" | "elevenlabs" | "pixabay" | "unsplash" | "gemini" };
   try {
     let message = "";
     if (provider === "anthropic") message = await testAnthropic();
@@ -23,6 +25,8 @@ export const POST = route(async (req: Request) => {
         message = `ElevenLabs OK — ${voices.length} voices available. (This key can't read your plan/credit usage; add the “User: Read” permission if you want that shown here.)`;
       }
     } else if (provider === "pixabay") message = await testPixabay();
+    else if (provider === "unsplash") message = await testUnsplash();
+    else if (provider === "gemini") message = await testGemini();
     else return json({ ok: false, message: "Unknown provider" }, 400);
     return json({ ok: true, message });
   } catch (e) {

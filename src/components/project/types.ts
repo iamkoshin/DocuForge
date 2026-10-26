@@ -45,4 +45,5 @@ export const STEP_LABELS: Record<StepName, string> = {
   preview: "QA stills",
   render: "Render",
   outputs: "Outputs",
+  shorts: "Shorts",
 };

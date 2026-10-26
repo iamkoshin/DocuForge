@@ -3,6 +3,7 @@ import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoCon
 import type { RenderScene, WordTiming } from "../../src/lib/schemas";
 import { T } from "../../src/lib/timing";
 import { clean, SafeArea, TextScrim, useLayout, useTheme } from "../components/layout";
+import { EditorialCaption } from "../components/EditorialCaption";
 import { MediaLayer } from "../components/Media";
 
 export interface SceneProps {
@@ -36,7 +37,20 @@ export function chunkWords(words: WordTiming[], emphasis: string[]): Chunk[] {
 
 const fitSize = (text: string, maxWidth: number, max: number, ratio = 0.6) => Math.min(max, maxWidth / Math.max(1, text.length * ratio));
 
-export const KineticCaption: React.FC<SceneProps> = ({ scene }) => {
+export const KineticCaption: React.FC<SceneProps> = (props) => (useTheme().style === "editorial" ? <EditorialKinetic {...props} /> : <ClassicKinetic {...props} />);
+
+/** Editorial: footage barely darkened, words appear one at a time in the empty part of the frame. */
+const EditorialKinetic: React.FC<SceneProps> = ({ scene }) => {
+  const theme = useTheme();
+  return (
+    <AbsoluteFill style={{ backgroundColor: theme.bg }}>
+      <MediaLayer assets={scene.assets} durationInFrames={scene.durationFrames} dim={0.16} seed={scene.index} />
+      <EditorialCaption scene={scene} />
+    </AbsoluteFill>
+  );
+};
+
+const ClassicKinetic: React.FC<SceneProps> = ({ scene }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const theme = useTheme();
@@ -95,6 +109,13 @@ export const KineticCaption: React.FC<SceneProps> = ({ scene }) => {
 export const Statement: React.FC<SceneProps> = ({ scene }) => {
   const frame = useCurrentFrame();
   const theme = useTheme();
+  // Editorial: the words appear as they are spoken, so a black screen never sits still.
+  if (theme.style === "editorial" && scene.words.length)
+    return (
+      <AbsoluteFill style={{ backgroundColor: "#000" }}>
+        <EditorialCaption scene={{ ...scene, assets: [] }} onPaper={false} scale={1.6} />
+      </AbsoluteFill>
+    );
   const { u, width, safe } = useLayout();
   const text = scene.data.statement || scene.narration;
   const o = interpolate(frame, [4, 18], [0, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
@@ -131,7 +152,7 @@ export const ChapterTitle: React.FC<SceneProps> = ({ scene }) => {
         <div
           style={{
             fontFamily: theme.serif,
-            fontStyle: "italic",
+            fontStyle: theme.serifStyle,
             color: theme.fg,
             fontSize: fitSize(title, width - safe.left - safe.right, 150, 0.42) * u,
             textAlign: "center",

@@ -5,8 +5,9 @@ export const ROOT = process.cwd();
 export const DATA_DIR = path.join(ROOT, "data");
 export const PROJECTS_DIR = path.join(DATA_DIR, "projects");
 export const SFX_DIR = path.join(DATA_DIR, "sfx");
+export const MUSIC_DIR = path.join(DATA_DIR, "music");
 export const CACHE_DIR = path.join(DATA_DIR, "cache");
-export const DB_PATH = path.join(DATA_DIR, "docuforge.db");
+export const DB_PATH = path.join(DATA_DIR, "narrative.db");
 
 export function ensureDir(dir: string) {
   fs.mkdirSync(dir, { recursive: true });

@@ -1,9 +1,11 @@
+import fs from "node:fs";
+import path from "node:path";
 import Database from "better-sqlite3";
 import { DB_PATH, DATA_DIR, ensureDir } from "./paths";
 
 declare global {
   // eslint-disable-next-line no-var
-  var __docuforgeDb: Database.Database | undefined;
+  var __narrativeDb: Database.Database | undefined;
 }
 
 const SCHEMA = `
@@ -85,15 +87,35 @@ CREATE INDEX IF NOT EXISTS sfx_key ON sfx(key);
 `;
 
 export function db(): Database.Database {
-  if (!globalThis.__docuforgeDb) {
+  if (!globalThis.__narrativeDb) {
     ensureDir(DATA_DIR);
-    const d = new Database(DB_PATH);
+    // The app was called DocuForge; carry its database (and WAL files) over to the new name once.
+    // If another process still has the old file open (Windows: EBUSY), keep using it and retry on a later start.
+    const legacy = path.join(DATA_DIR, "docuforge.db");
+    let file = DB_PATH;
+    if (!fs.existsSync(DB_PATH) && fs.existsSync(legacy)) {
+      const moved: string[] = [];
+      try {
+        for (const ext of ["-wal", "-shm", ""]) {
+          if (!fs.existsSync(legacy + ext)) continue;
+          fs.renameSync(legacy + ext, DB_PATH + ext);
+          moved.push(ext);
+        }
+      } catch {
+        // Put back whatever moved so the database and its WAL stay together.
+        for (const ext of moved) fs.renameSync(DB_PATH + ext, legacy + ext);
+        file = legacy;
+      }
+    }
+    const d = new Database(file);
     d.pragma("journal_mode = WAL");
-    d.pragma("busy_timeout = 5000");
+    d.pragma("busy_timeout = 15000"); // the web server and worker share the database
     d.exec(SCHEMA);
-    globalThis.__docuforgeDb = d;
+    // Projects created before the Shorts step existed get its row (shorts are made only on request).
+    d.exec("INSERT OR IGNORE INTO steps (project_id, step, status) SELECT id, 'shorts', CASE status WHEN 'done' THEN 'skipped' ELSE 'pending' END FROM projects");
+    globalThis.__narrativeDb = d;
   }
-  return globalThis.__docuforgeDb;
+  return globalThis.__narrativeDb;
 }
 
 export const now = () => Date.now();

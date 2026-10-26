@@ -40,7 +40,7 @@ export default function Dashboard() {
       {rows && rows.length === 0 && (
         <div className="rounded-lg border border-dashed border-line bg-panel/50 p-10 text-center">
           <p className="font-serif text-xl mb-2">No videos yet</p>
-          <p className="text-sub text-sm mb-5">Give DocuForge a topic and a length; it researches, writes, voices and edits the documentary.</p>
+          <p className="text-sub text-sm mb-5">Give Narrative a topic and a length; it researches, writes, voices and edits the documentary.</p>
           <Link href="/new" className="rounded-md bg-cobalt px-4 py-2 text-sm font-medium text-white">
             Start your first video
           </Link>

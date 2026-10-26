@@ -21,14 +21,30 @@ export const T = {
   },
 };
 
-// Scene/voice spacing (seconds).
+// Scene/voice spacing (seconds). Voice clips are trimmed of their own silence, so these are the only
+// pauses between scenes. Kept short: dead air is where viewers leave.
 export const GAP = {
-  firstLead: 0.4, // hold before the very first word
+  firstLead: 0.15, // hold before the very first word
   cutLead: 0.12, // cut this long before the next scene's first word (cuts land on word boundaries)
-  between: 0.3,
-  chapter: 0.9,
-  beforeClimax: 1.1, // the moment of silence before the biggest reveal
+  between: 0.1,
+  chapter: 0.45,
+  beforeClimax: 0.6, // a short beat before the biggest reveal
   endHold: 2.8,
 };
+
+/**
+ * How a scene's background footage is cut into shots. Shared by the renderer (MediaLayer) and the
+ * sound planner, so every cut can get its sound. Fast pacing (Editorial) cuts about every 1.5 s and
+ * cycles the scene's images with different moves; classic pacing changes about every 3 s.
+ */
+export function shotPlan(durationFrames: number, assetCount: number, fast: boolean) {
+  if (!assetCount) return { shots: 0, len: durationFrames };
+  const shots = fast
+    ? Math.max(1, Math.round(durationFrames / (FPS * 1.5)))
+    : assetCount > 1
+      ? Math.max(1, Math.min(assetCount * 2, Math.round(durationFrames / (FPS * 3))))
+      : 1;
+  return { shots, len: Math.ceil(durationFrames / shots) };
+}
 
 export const toFrames = (sec: number) => Math.round(sec * FPS);

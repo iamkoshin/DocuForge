@@ -2,13 +2,14 @@ import React from "react";
 import { AbsoluteFill, Easing, Img, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { T } from "../../src/lib/timing";
 import { SafeArea, TextScrim, useLayout, useTheme } from "../components/layout";
+import { isLight } from "../themes";
 import { gradeFilter, MediaLayer } from "../components/Media";
 import type { SceneProps } from "./Typography";
 
 function formatLike(template: string, value: number) {
   const decimals = (template.split(".")[1] ?? "").replace(/\D/g, "").length;
   const s = value.toFixed(decimals);
-  return template.includes(",") ? Number(s).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : s;
+  return template.includes(",") || Math.abs(value) >= 10000 ? Number(s).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : s;
 }
 
 export const BigNumber: React.FC<SceneProps> = ({ scene }) => {
@@ -30,11 +31,11 @@ export const BigNumber: React.FC<SceneProps> = ({ scene }) => {
   const numSize = Math.min(320, (maxW / u) / Math.max(2, effLen * 0.6)) * u;
   return (
     <AbsoluteFill style={{ backgroundColor: theme.bg }}>
-      <MediaLayer assets={scene.assets} durationInFrames={scene.durationFrames} dim={0.45} seed={scene.index} />
-      <TextScrim from="center" strength={0.6} />
+      <MediaLayer assets={scene.assets} durationInFrames={scene.durationFrames} dim={theme.style === "editorial" ? 0.25 : 0.45} seed={scene.index} />
+      {scene.assets.length > 0 && <TextScrim from="center" strength={theme.style === "editorial" ? 0.35 : 0.6} />}
       <SafeArea>
         <div style={{ opacity: frame >= snap ? 1 : 0, transform: `scale(${1.35 - 0.35 * pop})`, textAlign: "center" }}>
-          <div style={{ fontFamily: theme.sans, fontWeight: theme.headlineWeight, color: theme.fg, fontSize: numSize, lineHeight: 0.9, letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums", textShadow: "0 8px 50px rgba(0,0,0,0.6)" }}>
+          <div style={{ fontFamily: theme.display, fontWeight: theme.headlineWeight, color: theme.fg, fontSize: numSize, lineHeight: 0.9, letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums", textShadow: isLight(theme.bg) ? "none" : "0 8px 50px rgba(0,0,0,0.6)" }}>
             {d.numberPrefix && <span style={{ fontSize: numSize * 0.55, verticalAlign: "0.55em" }}>{d.numberPrefix}</span>}
             {shown}
             {d.numberSuffix && <span style={{ fontSize: numSize * 0.34, marginLeft: numSize * 0.08, letterSpacing: "-0.01em", fontWeight: 800 }}>{d.numberSuffix.trim()}</span>}
@@ -121,18 +122,20 @@ export const FlowDiagram: React.FC<SceneProps> = ({ scene }) => {
   const n = nodes.length;
   const dur = scene.durationFrames / fps;
   const times = T.stepTimes(Math.max(1, n - 1), dur);
-  const box = (vertical ? 300 : 260) * u;
+  const box = (vertical ? 400 : theme.style === "editorial" ? 340 : 260) * u; // Editorial: bigger prints, like the reference
+  // Vertical: boxes zigzag left/right down the frame, so they can be big without overlapping.
   const pos = nodes.map((_, i) => {
     const f = n === 1 ? 0.5 : i / (n - 1);
     return vertical
-      ? { x: width / 2, y: safe.top + box / 2 + f * (height - safe.top - safe.bottom - box) }
+      ? { x: n === 1 ? width / 2 : width * (i % 2 ? 0.68 : 0.32), y: safe.top + box / 2 + f * (height - safe.top - safe.bottom - box) }
       : { x: safe.left + box / 2 + f * (width - safe.left - safe.right - box), y: height / 2 + 30 * u };
   });
+  const trim = vertical ? box * 0.32 : box / 2; // arrows start and stop at the box edge
   return (
     <AbsoluteFill style={{ backgroundColor: theme.bg }}>
       <AbsoluteFill style={{ backgroundImage: `linear-gradient(${theme.line} 1px, transparent 1px), linear-gradient(90deg, ${theme.line} 1px, transparent 1px)`, backgroundSize: `${80 * u}px ${80 * u}px`, opacity: 0.15 }} />
       {scene.data.flowLabel && (
-        <div style={{ position: "absolute", top: safe.top * (vertical ? 0.6 : 1.2), left: 0, right: 0, textAlign: "center", fontFamily: theme.mono, color: theme.accent, fontSize: 30 * u, letterSpacing: "0.2em", textTransform: "uppercase" }}>
+        <div style={{ position: "absolute", top: safe.top * (vertical ? 0.6 : 1.2), left: safe.left, right: safe.right, textAlign: "center", fontFamily: theme.mono, color: theme.accent, fontSize: 30 * u, letterSpacing: "0.2em", textTransform: "uppercase" }}>
           {scene.data.flowLabel}
         </div>
       )}
@@ -141,10 +144,9 @@ export const FlowDiagram: React.FC<SceneProps> = ({ scene }) => {
           const a = pos[i];
           const start = Math.round(times[i] * fps);
           const prog = interpolate(frame, [start, start + 14], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.cubic) });
-          const x1 = a.x + (vertical ? 0 : box / 2);
-          const y1 = a.y + (vertical ? box / 2 : 0);
-          const x2 = p.x - (vertical ? 0 : box / 2);
-          const y2 = p.y - (vertical ? box / 2 : 0);
+          const d = Math.hypot(p.x - a.x, p.y - a.y) || 1;
+          const [ux, uy] = [(p.x - a.x) / d, (p.y - a.y) / d];
+          const [x1, y1, x2, y2] = [a.x + ux * trim, a.y + uy * trim, p.x - ux * trim, p.y - uy * trim];
           const len = Math.hypot(x2 - x1, y2 - y1);
           // Moving pulse = the money/data flowing.
           const pulse = ((frame - start) % 30) / 30;
@@ -158,14 +160,33 @@ export const FlowDiagram: React.FC<SceneProps> = ({ scene }) => {
       </svg>
       {nodes.map((label, i) => {
         const appear = spring({ frame: frame - (i === 0 ? 2 : Math.round(times[i - 1] * fps) + 10), fps, config: { damping: 15 } });
-        const asset = scene.assets.length ? scene.assets[i % scene.assets.length] : null;
+        // Each box has its own photo (older projects: the scene's images in rotation).
+        const asset = scene.nodeAssets ? scene.nodeAssets[i] : scene.assets.length ? scene.assets[i % scene.assets.length] : null;
+        const editorial = theme.style === "editorial";
+        if (editorial && !asset) {
+          // No photo for this box: a clean paper card with the label, not an empty dark square.
+          return (
+            <div key={i} style={{ position: "absolute", left: pos[i].x - box / 2, top: pos[i].y - box / 2, width: box, height: box, transform: `scale(${appear})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: box * 0.86, minHeight: box * 0.5, padding: 16 * u, backgroundColor: "#FAF8F4", border: `${2 * u}px solid ${theme.fg}`, boxShadow: `0 ${14 * u}px ${30 * u}px rgba(0,0,0,0.18)`, transform: `rotate(${i % 2 ? 1.5 : -1.5}deg)`, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontFamily: theme.display, fontWeight: 800, color: theme.fg, fontSize: Math.max(26, Math.min(44, 520 / Math.max(1, label.length))) * u, lineHeight: 1.05, letterSpacing: "-0.02em" }}>
+                {label}
+              </div>
+            </div>
+          );
+        }
+        const f = asset?.focus;
         return (
           <div key={i} style={{ position: "absolute", left: pos[i].x - box / 2, top: pos[i].y - box / 2, width: box, height: box, transform: `scale(${appear})`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 * u }}>
-            <div style={{ width: box * 0.62, height: box * 0.62, borderRadius: "50%", overflow: "hidden", border: `${4 * u}px solid ${theme.fg}`, backgroundColor: "#222", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div
+              style={
+                theme.style === "editorial"
+                  ? { width: box * 0.78, height: box * 0.56, overflow: "hidden", border: `${8 * u}px solid #FAF8F4`, boxShadow: `0 ${14 * u}px ${30 * u}px rgba(0,0,0,0.25)`, transform: `rotate(${i % 2 ? 2 : -2}deg)`, backgroundColor: "#222", display: "flex", alignItems: "center", justifyContent: "center" }
+                  : { width: box * 0.62, height: box * 0.62, borderRadius: "50%", overflow: "hidden", border: `${4 * u}px solid ${theme.fg}`, backgroundColor: "#222", display: "flex", alignItems: "center", justifyContent: "center" }
+              }
+            >
               {asset && asset.type === "image" ? (
-                <Img src={asset.url} style={{ width: "100%", height: "100%", objectFit: "cover", filter: gradeFilter(theme.grade) }} />
+                <Img src={asset.url} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: f ? `${(f.x + f.w / 2) * 100}% ${(f.y + f.h / 2) * 100}%` : "50% 40%", filter: gradeFilter(theme.grade) }} />
               ) : (
-                <div style={{ fontFamily: theme.sans, fontWeight: 900, color: theme.fg, fontSize: 70 * u }}>{label.slice(0, 1).toUpperCase()}</div>
+                <div style={{ fontFamily: theme.sans, fontWeight: 900, color: theme.style === "editorial" ? "#FAF8F4" : theme.fg, fontSize: 70 * u }}>{label.slice(0, 1).toUpperCase()}</div>
               )}
             </div>
             <div style={{ fontFamily: theme.sans, fontWeight: 700, color: theme.fg, fontSize: 32 * u, textAlign: "center", lineHeight: 1.1 }}>{label}</div>

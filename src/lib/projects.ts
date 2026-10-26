@@ -50,13 +50,13 @@ export function createProject(options: ProjectOptions, estimateUsd: number) {
 export function getProject(id: string) {
   const row = db().prepare("SELECT * FROM projects WHERE id = ?").get(id) as ProjectRow | undefined;
   if (!row) return null;
-  return { ...row, options: { ownScript: "", ...JSON.parse(row.options) } as ProjectOptions }; // older projects predate ownScript
+  return { ...row, options: { ownScript: "", musicVolume: 0, ...JSON.parse(row.options) } as ProjectOptions }; // older projects predate ownScript and musicVolume
 }
 export type Project = NonNullable<ReturnType<typeof getProject>>;
 
 export function listProjects() {
   const rows = db().prepare("SELECT * FROM projects ORDER BY created_at DESC").all() as ProjectRow[];
-  return rows.map((r) => ({ ...r, options: { ownScript: "", ...JSON.parse(r.options) } as ProjectOptions, costUsd: projectCost(r.id) }));
+  return rows.map((r) => ({ ...r, options: { ownScript: "", musicVolume: 0, ...JSON.parse(r.options) } as ProjectOptions, costUsd: projectCost(r.id) }));
 }
 
 export function updateProject(id: string, patch: Partial<Omit<ProjectRow, "id">>) {

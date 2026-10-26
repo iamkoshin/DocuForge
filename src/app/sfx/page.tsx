@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, Button, ErrorNote, Field, fileUrl, inputCls, Panel } from "@/components/ui";
+import type { MusicTrack } from "@/lib/music";
 
 interface Sound {
   id: string;
@@ -18,6 +19,7 @@ interface Sound {
 export default function SfxLibrary() {
   const [sounds, setSounds] = useState<Sound[]>([]);
   const [starter, setStarter] = useState<string[]>([]);
+  const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [q, setQ] = useState("");
   const [prompt, setPrompt] = useState("");
   const [duration, setDuration] = useState("");
@@ -26,7 +28,11 @@ export default function SfxLibrary() {
   const [playing, setPlaying] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
 
-  const load = () => api<{ sounds: Sound[]; starter: string[] }>("/api/sfx").then((d) => (setSounds(d.sounds), setStarter(d.starter)));
+  const load = () =>
+    Promise.all([
+      api<{ sounds: Sound[]; starter: string[] }>("/api/sfx").then((d) => (setSounds(d.sounds), setStarter(d.starter))),
+      api<{ tracks: MusicTrack[] }>("/api/music").then((d) => setTracks(d.tracks)),
+    ]);
   useEffect(() => {
     load();
   }, []);
@@ -42,7 +48,7 @@ export default function SfxLibrary() {
   }, [sounds, q]);
   const missingStarter = starter.filter((k) => !sounds.some((s) => s.key === k));
 
-  const play = (s: Sound) => {
+  const play = (s: { id: string; file: string }) => {
     audio.current?.pause();
     if (playing === s.id) return setPlaying(null);
     audio.current = new Audio(fileUrl(s.file));
@@ -71,12 +77,20 @@ export default function SfxLibrary() {
       const r = await fetch("/api/sfx", { method: "POST", body: fd });
       if (!r.ok) throw new Error((await r.json()).error);
     });
+  const uploadMusic = (files: FileList | null) =>
+    files?.length &&
+    run("music", async () => {
+      const fd = new FormData();
+      [...files].forEach((f) => fd.append("files", f));
+      const r = await fetch("/api/music", { method: "POST", body: fd });
+      if (!r.ok) throw new Error((await r.json()).error);
+    });
 
   return (
     <div className="max-w-5xl flex flex-col gap-6">
       <div>
         <h1 className="font-serif text-3xl font-semibold tracking-tight">Sound library</h1>
-        <p className="text-sm text-sub mt-1">Every video reuses these sounds before generating anything new. Sounds with several takes rotate so hits don’t repeat exactly.</p>
+        <p className="text-sm text-sub mt-1">Your saved music and sound effects. Every video reuses these sounds before generating anything new. Sounds with several takes rotate so hits don’t repeat exactly.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -109,6 +123,33 @@ export default function SfxLibrary() {
         </Panel>
       </div>
       <ErrorNote error={error} />
+
+      <Panel>
+        <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-line">
+          <div>
+            <h2 className="font-semibold text-sm">Music</h2>
+            <p className="text-xs text-sub">Every track you upload or generate is kept here. Pick one on a new video instead of generating music again.</p>
+          </div>
+          <input type="file" multiple accept="audio/*" onChange={(e) => uploadMusic(e.target.files)} className="text-sm text-sub file:mr-3 file:rounded-md file:border file:border-line file:bg-panel file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:border-ink/40" disabled={busy === "music"} />
+        </div>
+        {tracks.length === 0 && <p className="px-4 py-3 text-sm text-sub">No music yet.</p>}
+        <ul className="divide-y divide-line">
+          {tracks.map((t) => (
+            <li key={t.name} className="px-4 py-2.5 flex items-center gap-3">
+              <button onClick={() => play({ id: t.file, file: t.file })} className="rounded-md border border-line px-2 py-1 text-xs" aria-label={`Play ${t.name}`}>
+                {playing === t.file ? "■" : "▶"}
+              </button>
+              <span className="text-sm min-w-0 flex-1 truncate">{t.name}</span>
+              <span className="text-xs text-sub tabular shrink-0">{(t.size / 1e6).toFixed(1)} MB</span>
+              <button onClick={() => confirm(`Delete ${t.name} from the music library?`) && run(`del-${t.name}`, () => api(`/api/music?name=${encodeURIComponent(t.name)}`, { method: "DELETE" }))} className="text-xs text-sub hover:text-bad">
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Panel>
+
+      <h2 className="font-semibold text-sm -mb-3">Sound effects</h2>
 
       <input className={`${inputCls} max-w-sm`} placeholder="Search sounds" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search sounds" />
       {groups.length === 0 && <p className="text-sm text-sub">No sounds yet.</p>}

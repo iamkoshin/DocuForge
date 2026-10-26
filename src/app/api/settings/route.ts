@@ -9,6 +9,8 @@ const keyStatus = () => ({
   ANTHROPIC_API_KEY: hasKey("ANTHROPIC_API_KEY"),
   ELEVENLABS_API_KEY: hasKey("ELEVENLABS_API_KEY"),
   PIXABAY_API_KEY: hasKey("PIXABAY_API_KEY"),
+  UNSPLASH_ACCESS_KEY: hasKey("UNSPLASH_ACCESS_KEY"),
+  GEMINI_API_KEY: hasKey("GEMINI_API_KEY"),
 });
 
 export const GET = route(async () => json({ settings: getSettings(), keys: keyStatus(), models: MODEL_OPTIONS, ffmpeg: await ffmpegAvailable() }));

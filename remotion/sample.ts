@@ -37,7 +37,6 @@ function build(): RenderProps {
     scenes,
     sfx: [],
     speech: [],
-    dropouts: [],
     musicBaseDb: -20,
     pauseBoostDb: 5,
     thumbnail: { text: "Nine Days To Zero" },

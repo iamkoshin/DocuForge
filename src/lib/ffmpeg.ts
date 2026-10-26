@@ -166,3 +166,64 @@ export async function normalizeLoudness(input: string, output: string, target = 
   }
   return { before, after };
 }
+
+/** Silent stretches (seconds) quieter than `db` that last at least `min` seconds. */
+export async function detectSilences(file: string, db = -40, min = 0.15): Promise<[number, number][]> {
+  const { stderr } = await run("ffmpeg", ["-hide_banner", "-i", file, "-af", `silencedetect=n=${db}dB:d=${min}`, "-f", "null", "-"]);
+  const out: [number, number][] = [];
+  let start: number | null = null;
+  for (const m of stderr.matchAll(/silence_(start|end): (-?[\d.]+)/g)) {
+    if (m[1] === "start") start = Math.max(0, Number(m[2]));
+    else if (start !== null) {
+      out.push([start, Number(m[2])]);
+      start = null;
+    }
+  }
+  return out;
+}
+
+/**
+ * Remove dead air from a voice clip: silence before the first word and after the last, and long pauses
+ * between sentences shortened to `maxPause`. Returns the removed stretches (original seconds) so word
+ * timings can be shifted to match.
+ */
+export async function tightenSpeech(input: string, output: string, o = { lead: 0.02, tail: 0.08, maxPause: 0.22 }) {
+  const dur = await probeDuration(input);
+  const removed: [number, number][] = [];
+  for (const [a, b0] of await detectSilences(input)) {
+    const b = Math.min(b0, dur);
+    if (a <= 0.01) b - o.lead > 0.01 && removed.push([0, b - o.lead]);
+    else if (b >= dur - 0.02) dur - (a + o.tail) > 0.01 && removed.push([a + o.tail, dur]);
+    else if (b - a > o.maxPause) removed.push([a + o.maxPause / 2, b - o.maxPause / 2]);
+  }
+  if (!removed.length) {
+    fs.copyFileSync(input, output);
+    return { removed, duration: dur };
+  }
+  const keep: [number, number][] = [];
+  let t = 0;
+  for (const [a, b] of removed) {
+    if (a > t) keep.push([t, a]);
+    t = b;
+  }
+  if (t < dur) keep.push([t, dur]);
+  const parts = keep.map(([a, b], i) => `[0:a]atrim=start=${a.toFixed(4)}:end=${b.toFixed(4)},asetpts=PTS-STARTPTS[s${i}]`);
+  const filter = `${parts.join(";")};${keep.map((_, i) => `[s${i}]`).join("")}concat=n=${keep.length}:v=0:a=1[out]`;
+  await run("ffmpeg", ["-y", "-i", input, "-filter_complex", filter, "-map", "[out]", "-c:a", "libmp3lame", "-b:a", "128k", output]);
+  return { removed, duration: await probeDuration(output) };
+}
+
+/** Where an original time lands after `removed` stretches were cut out. */
+export function shiftTime(t: number, removed: [number, number][]) {
+  let shift = 0;
+  for (const [a, b] of removed) {
+    if (t >= b) shift += b - a;
+    else if (t > a) shift += t - a;
+  }
+  return Math.max(0, t - shift);
+}
+
+/** Bring a music track to a fixed loudness so the mix level means the same for every track. */
+export async function normalizeMusic(input: string, output: string, lufs = -14) {
+  await run("ffmpeg", ["-y", "-i", input, "-af", `loudnorm=I=${lufs}:TP=-2:LRA=11`, "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", output]);
+}

@@ -53,7 +53,12 @@ export function makeCtx(id: string, step: StepName): StepCtx {
       const t = Date.now();
       if (t - lastProgress < 400 && fraction < 1) return; // throttle DB writes
       lastProgress = t;
-      setStep(id, step, { progress: Math.max(0, Math.min(1, fraction)), ...(message ? { message } : {}) });
+      try {
+        setStep(id, step, { progress: Math.max(0, Math.min(1, fraction)), ...(message ? { message } : {}) });
+      } catch (e) {
+        // A busy database must never fail a long render over a progress message; the next update catches up.
+        console.warn(`[progress] ${id}/${step}: ${(e as Error).message}`);
+      }
     },
   };
 }

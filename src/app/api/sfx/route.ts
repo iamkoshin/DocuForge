@@ -22,7 +22,7 @@ export const POST = route(async (req: Request) => {
     const rows = [];
     for (const f of form.getAll("files")) {
       if (!(f instanceof File)) continue;
-      const tmp = path.join(os.tmpdir(), `docuforge-${Date.now()}-${path.basename(f.name)}`);
+      const tmp = path.join(os.tmpdir(), `narrative-${Date.now()}-${path.basename(f.name)}`);
       fs.writeFileSync(tmp, Buffer.from(await f.arrayBuffer()));
       try {
         rows.push(await addUploadedSfx({ srcFile: tmp, originalName: f.name, tags, key }));

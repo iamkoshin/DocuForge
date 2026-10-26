@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { cachedFile } from "@/lib/cache";
 import { composeMusic, FeatureUnavailableError, MUSIC_MAX_MS } from "@/lib/clients/elevenlabs";
-import { crossfadeConcat, fitAudio, probeDuration } from "@/lib/ffmpeg";
+import { crossfadeConcat, fitAudio, normalizeMusic, probeDuration } from "@/lib/ffmpeg";
+import { addToLibrary, generatedName } from "@/lib/music";
 import { addCost } from "@/lib/projects";
 import type { Script, VoiceResult } from "@/lib/schemas";
 import { buildTimeline } from "@/lib/timeline";
@@ -46,7 +47,7 @@ export const musicStep: StepDef = {
   name: "music",
   inputs: (ctx) => {
     const up = uploadedTrack(ctx);
-    return { voice: ctx.hash("voice.json"), mood: ctx.options.musicMood, tone: ctx.options.tone, model: ctx.settings.musicModel, upload: up ? fs.statSync(up).mtimeMs : null };
+    return { voice: ctx.hash("voice.json"), mood: ctx.options.musicMood, tone: ctx.options.tone, theme: ctx.options.theme, model: ctx.settings.musicModel, v: 2, upload: up ? fs.statSync(up).mtimeMs : null };
   },
   async run(ctx) {
     const script = ctx.read<Script>("script.json");
@@ -59,7 +60,9 @@ export const musicStep: StepDef = {
     const upload = uploadedTrack(ctx);
     if (upload) {
       ctx.info(`Using uploaded music track ${path.basename(upload)}`);
-      await fitAudio(upload, out, total);
+      await fitAudio(upload, out + ".tmp.mp3", total);
+      await normalizeMusic(out + ".tmp.mp3", out);
+      fs.rmSync(out + ".tmp.mp3", { force: true });
       ctx.write("music.json", { file: "music.mp3", source: "upload" } satisfies MusicResult);
       return "done";
     }
@@ -71,14 +74,21 @@ export const musicStep: StepDef = {
 
     const climaxIdx = Math.max(0, script.scenes.findIndex((s) => s.climax));
     const climaxAt = tl[climaxIdx]?.voiceStart ?? total * 0.7;
-    const base = `Instrumental documentary underscore, ${mood} mood, ${ctx.options.tone.toLowerCase()} tone. No vocals, no lyrics. Sits under narration: sparse mid-range, no busy melodies.`;
+    const editorial = ctx.options.theme === "editorial";
+    const base = editorial
+      ? // Modern explainer bed. It must be audible on phone speakers, so the pulse lives in the mid-range, not only the sub-bass.
+        `Modern documentary score for a fast-paced YouTube explainer, ${mood} mood, about 100 BPM. A steady, driving pulse in the mid-range: muted synth plucks or staccato piano repeating a simple motif, a warm sustained synth pad, and a soft punchy kick with a sub-bass hit on each beat. Clear, present and full-range (clearly audible on phone speakers), but no lead melody and nothing busy. No vocals, no lyrics.`
+      : `Instrumental documentary underscore, ${mood} mood, ${ctx.options.tone.toLowerCase()} tone. No vocals, no lyrics. Sits under narration: sparse mid-range, no busy melodies.`;
+    const arc = editorial
+      ? `The pulse starts right away (no slow intro), keeps momentum the whole time, adds layers to build intensity toward ${fmt(climaxAt)}, then resolves into a final chord.`
+      : `Starts quiet and sparse, builds tension gradually, reaches its most intense point around ${fmt(climaxAt)}, then resolves softly for the ending.`;
 
     try {
       if (total * 1000 + 2000 <= MUSIC_MAX_MS) {
         ctx.progress(0.2, `Composing ${fmt(total)} of music…`);
-        const prompt = `${base} Starts quiet and sparse, builds tension gradually, reaches its most intense point around ${fmt(climaxAt)}, then resolves softly for the ending. Total length ${fmt(total)}.`;
+        const prompt = `${base} ${arc} Total length ${fmt(total)}.`;
         const f = await generate(ctx, prompt, total + 2);
-        fs.copyFileSync(f, out);
+        await normalizeMusic(f, out);
       } else {
         // Longer than one track allows: one cue per chapter, joined with crossfades.
         const fade = 3;
@@ -92,10 +102,13 @@ export const musicStep: StepDef = {
           const prompt = `${base} Chapter "${ch.title}". ${peak ? "This is the climax: build to peak intensity, then a sudden drop." : i === script.chapters.length - 1 ? "Final chapter: reflective, resolving, gentle ending." : "Steady, building tension with movement."} Length ${fmt(len)}.`;
           parts.push(await generate(ctx, prompt, Math.min(len, MUSIC_MAX_MS / 1000)));
         }
-        await crossfadeConcat(parts, out, fade);
+        await crossfadeConcat(parts, out + ".tmp.mp3", fade);
+        await normalizeMusic(out + ".tmp.mp3", out);
+        fs.rmSync(out + ".tmp.mp3", { force: true });
       }
       const d = await probeDuration(out);
-      ctx.info(`Music ready (${fmt(d)})`);
+      const saved = addToLibrary(out, generatedName(ctx.options.topic, mood));
+      ctx.info(`Music ready (${fmt(d)}), saved to the music library as “${saved}”`);
       ctx.write("music.json", { file: "music.mp3", source: "generated" } satisfies MusicResult);
       return "done";
     } catch (e) {

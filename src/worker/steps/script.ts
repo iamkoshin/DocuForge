@@ -15,7 +15,7 @@ export const SCENE_TYPE_GUIDE = `Scene types (pick what fits the line; vary them
 - PhotoStack: 2–4 real photos dropping like prints; data.captions (with dates). visual.kind = "event" or "person".
 - PaperDocument: cream paper card; data.docType ("statement" = balance draining below zero, "balance-sheet" = rows highlighting red, "filing" = court/regulatory filing with stamp), data.docTitle, data.docRows [{label, value, negative}], data.stampText.
 - CodeSnippet: short illustrative code (≤ 8 lines) with data.highlightLine; shown labelled ILLUSTRATION. Only when explaining software/mechanisms.
-- FlowDiagram: how money/data/control moved; data.nodes (2–5 labels in order), data.flowLabel.
+- FlowDiagram: how money/data/control moved; data.nodes (2–5 short labels in order), data.flowLabel. Each box gets its own photo, so make every label something a photo can show: a named person, company, place or institution, or a concrete thing ("Customers", "FTX", "Alameda Research", "State banks"), never an abstract idea.
 - Timeline: data.timelineEvents [{date, label}] (2–5 dated events).
 - ChapterTitle: data.chapterNumber, data.chapterTitle (only for videos ≥ 6 minutes, first scene of each chapter).
 - SocialPost: ONLY a verbatim real post that appears in the research with its source URL: data.post {author, handle, platform, text, date, sourceUrl}. Never invent posts or engagement numbers.
@@ -37,8 +37,23 @@ export function sfxGuide(level: ProjectOptions["sfxLevel"]) {
   return `Plan sound effects ${density}. Use these library keys when they fit (preferred, free): ${STARTER_PACK.map((s) => s.key).join(", ")}.
 If nothing fits, describe a new short sound in a few words (e.g. "cell phone vibrating on table").
 at = "word" requires anchorWord, an exact word from that scene's narration where the hit lands. Use "start" for transitions, "end" for stingers.
-Mark the single biggest reveal of the video with climax=true on that scene (the mix uses a riser, a moment of silence, then a sub drop there).
+Mark the single biggest reveal of the video with climax=true on that scene (the mix uses a riser, then a sub drop there).
 Scene-type sounds (camera shutter on NameReveal, stamp on filings, ticks on Timeline, etc.) are added automatically — don't duplicate them.`;
+}
+
+/** Extra direction for themes whose look depends on the plan (Editorial captions are driven by emphasisWords). */
+export function styleGuide(theme: ProjectOptions["theme"]) {
+  if (theme !== "editorial") return "";
+  return `Visual style: EDITORIAL (modern explainer documentary). Words appear on screen one at a time as they are spoken, and the emphasisWords switch typeface, so choose them carefully:
+- Per scene pick 2–4 emphasisWords, spread through the narration (about one per sentence), each an exact word or short phrase from it:
+  1. Every important figure, with its unit, exactly as written in the narration (e.g. "eight billion dollars", "thirty-two percent", "twenty twenty-two"). Shown huge in bold.
+  2. The name of a person, company or place when it is first mentioned (e.g. "Bankman-Fried", "Alameda"). Shown large in serif.
+  3. At most one charged word per scene for a turn of events (e.g. "crashed", "guilty", "never", "stolen", "panicked"). Shown in red with a glitch, so use it sparingly.
+  4. One evocative word or short phrase that carries the feeling of the line (e.g. "give it all away", "trusted", "basically a bank"). Shown in italic serif.
+- Never pick filler words (the, and, was, very).
+- Use KineticCaption over real footage or photos for most of the narration (about half of all scenes), with visual "stock" or "person" so the words sit on a picture.
+- Explain mechanisms with clean graphics: FlowDiagram (who moved money to whom), PaperDocument with docType "statement" (a balance draining below zero) or "balance-sheet", Timeline, and BigNumber for one striking figure. These sit on warm paper.
+- Put the punchline before the big reveal on a Statement scene (white words on black), and end with an EndCard.`;
 }
 
 export function structureGuide(minutes: number) {
@@ -173,7 +188,7 @@ async function writeScript(ctx: StepCtx, research: Research): Promise<Script> {
   const words = targetWords(o.minutes, o.language);
   const sceneCount = Math.max(4, Math.round((o.minutes * 60) / SCENE_SECONDS));
   const call = { projectId: ctx.id, step: "script", model: ctx.model };
-  const common = `${structureGuide(o.minutes)}\n\n${WRITING_RULES}\n\n${SCENE_TYPE_GUIDE}\n\n${VISUAL_GUIDE}\n\n${sfxGuide(o.sfxLevel)}`;
+  const common = `${structureGuide(o.minutes)}\n\n${WRITING_RULES}\n\n${SCENE_TYPE_GUIDE}\n\n${VISUAL_GUIDE}\n\n${sfxGuide(o.sfxLevel)}\n\n${styleGuide(o.theme)}`;
 
   if (o.minutes < 6) {
     ctx.progress(0.15, `Writing ~${words} words in ~${sceneCount} scenes…`);
@@ -245,7 +260,7 @@ async function directOwnScript(ctx: StepCtx, research: Research): Promise<Script
   const split = splitOwnScript(o.ownScript);
   if (!split.scenes.length) throw new Error("Your script is empty. Paste it on a new project, or edit the scenes on the Script tab.");
   const call = { projectId: ctx.id, step: "script", model: ctx.model };
-  const guide = `${OWN_SCRIPT_RULES}\n\n${SCENE_TYPE_GUIDE}\n\n${VISUAL_GUIDE}\n\n${sfxGuide(o.sfxLevel)}`;
+  const guide = `${OWN_SCRIPT_RULES}\n\n${SCENE_TYPE_GUIDE}\n\n${VISUAL_GUIDE}\n\n${sfxGuide(o.sfxLevel)}\n\n${styleGuide(o.theme)}`;
   const chapters = split.chapters.length > 1 ? `Chapters: ${split.chapters.map((c) => `${c.id} "${c.title}"`).join(", ")}\n` : "";
   const annotations: Annotation[] = [];
   const meta = { title: "", thumbnailText: "" };
@@ -395,7 +410,7 @@ Previous scene: ${script.scenes[idx - 1]?.narration ?? "(start of video)"}
 THIS SCENE: ${JSON.stringify(scene)}
 Next scene: ${script.scenes[idx + 1]?.narration ?? "(end of video)"}
 
-${WRITING_RULES}\n\n${SCENE_TYPE_GUIDE}\n\n${VISUAL_GUIDE}\n\n${sfxGuide(ctx.options.sfxLevel)}
+${WRITING_RULES}\n\n${SCENE_TYPE_GUIDE}\n\n${VISUAL_GUIDE}\n\n${sfxGuide(ctx.options.sfxLevel)}\n\n${styleGuide(ctx.options.theme)}
 
 RESEARCH:\n${researchBrief(research)}`,
   });

@@ -19,6 +19,8 @@ const PROVIDERS = [
   { key: "ANTHROPIC_API_KEY", provider: "anthropic", label: "Anthropic (Claude)", use: "Research, script, fact-check, image checks" },
   { key: "ELEVENLABS_API_KEY", provider: "elevenlabs", label: "ElevenLabs", use: "Voiceover, music, sound effects" },
   { key: "PIXABAY_API_KEY", provider: "pixabay", label: "Pixabay", use: "Stock footage and photos" },
+  { key: "UNSPLASH_ACCESS_KEY", provider: "unsplash", label: "Unsplash", use: "Optional. High-quality photos for mood and scenery shots" },
+  { key: "GEMINI_API_KEY", provider: "gemini", label: "Google Gemini (free)", use: "Optional. Photo checks and matching your uploads without the Claude API" },
 ] as const;
 
 export default function SettingsPage() {
@@ -27,6 +29,7 @@ export default function SettingsPage() {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [tests, setTests] = useState<Record<string, { ok: boolean; message: string } | "busy">>({});
   const [saved, setSaved] = useState(false);
+  const [finding, setFinding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,6 +54,16 @@ export default function SettingsPage() {
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setError((e as Error).message);
+    }
+  };
+  const findModels = async () => {
+    setFinding("Testing each Gemini model with one small request…");
+    try {
+      const { models } = await api<{ models: string[] }>("/api/settings/gemini-models", { method: "POST" });
+      if (models.length) set("geminiModels", models);
+      setFinding(models.length ? `${models.length} models work on your free tier. Click “Save settings” to keep this list.` : "No model answered. Your daily limits may be used up; try again tomorrow.");
+    } catch (e) {
+      setFinding((e as Error).message);
     }
   };
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS((p) => (p ? { ...p, [k]: v } : p));
@@ -128,7 +141,7 @@ export default function SettingsPage() {
         <Field label="Default visual theme">
           <select className={inputCls} value={s.defaultTheme} onChange={(e) => set("defaultTheme", e.target.value)}>
             <option value="investigative">Investigative</option>
-            <option value="clean-light">Clean Light</option>
+            <option value="editorial">Editorial</option>
             <option value="retro-archive">Retro Archive</option>
           </select>
         </Field>
@@ -147,11 +160,36 @@ export default function SettingsPage() {
             <option value="eleven_v3">Eleven v3</option>
           </select>
         </Field>
+        <Field label="Voice speed" hint="1 is natural. Up to 1.2 for faster, high-retention narration. Changing it re-voices the next video.">
+          <input type="number" min={0.7} max={1.2} step={0.05} className={inputCls} value={s.voiceSpeed} onChange={(e) => set("voiceSpeed", Math.min(1.2, Math.max(0.7, Number(e.target.value) || 1)))} />
+        </Field>
         <Field label="Music model">
           <select className={inputCls} value={s.musicModel} onChange={(e) => set("musicModel", e.target.value)}>
             <option value="music_v1">Music v1</option>
             <option value="music_v2">Music v2</option>
             <option value="music_v2_5">Music v2.5</option>
+          </select>
+        </Field>
+        <Field label="Who checks photos" hint="Checks that found photos really show the subject, and matches your uploads to scenes.">
+          <select className={inputCls} value={s.photoCheck} onChange={(e) => set("photoCheck", e.target.value as Settings["photoCheck"])}>
+            <option value="auto">Claude API when the video uses it, otherwise Gemini</option>
+            <option value="gemini">Always Gemini (free)</option>
+            <option value="captions">No AI check (match by caption and file name)</option>
+          </select>
+        </Field>
+        <Field label="Gemini models" hint="One per line, best first. Each model has its own free limit; when one runs out, the next takes over.">
+          <textarea rows={5} className={`${inputCls} font-mono text-xs`} value={s.geminiModels.join("\n")} onChange={(e) => set("geminiModels", e.target.value.split("\n").map((x) => x.trim()))} onBlur={() => set("geminiModels", s.geminiModels.filter(Boolean))} />
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            <Button size="sm" busy={finding?.startsWith("Testing")} disabled={!data.keys.GEMINI_API_KEY} onClick={findModels}>
+              Find free models
+            </Button>
+            {finding && !finding.startsWith("Testing") && <span className="text-xs text-sub">{finding}</span>}
+          </div>
+        </Field>
+        <Field label="Unsplash credits in the YouTube description" hint="Optional under the Unsplash License. The image picker always shows the photographer.">
+          <select className={inputCls} value={s.creditUnsplash ? "yes" : "no"} onChange={(e) => set("creditUnsplash", e.target.value === "yes")}>
+            <option value="yes">Credit photographers</option>
+            <option value="no">Don’t credit</option>
           </select>
         </Field>
         <Field label="Render concurrency" hint="Parallel browser tabs while rendering. Lower it if your computer struggles.">

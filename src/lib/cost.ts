@@ -49,7 +49,11 @@ export interface Estimate {
 }
 
 /** Rough pre-flight estimate. Real costs are recorded per call and shown on the project page. */
-export function estimateProject(o: Pick<ProjectOptions, "minutes" | "sfxLevel" | "musicMood" | "model"> & { scriptSource?: ProjectOptions["scriptSource"] }, s: Settings, newSfxGuess = 6): Estimate {
+export function estimateProject(
+  o: Pick<ProjectOptions, "minutes" | "sfxLevel" | "musicMood" | "model"> & { scriptSource?: ProjectOptions["scriptSource"]; vision?: "claude" | "gemini" | "captions" },
+  s: Settings,
+  newSfxGuess = 6,
+): Estimate {
   const api = o.scriptSource !== "app"; // Claude-app mode makes no Claude API calls
   const model = o.model || s.model;
   const words = o.minutes * 150;
@@ -71,15 +75,16 @@ export function estimateProject(o: Pick<ProjectOptions, "minutes" | "sfxLevel" |
       usd: claudeUsd(model, { input: 30000 + scriptOut * 2, output: scriptOut * 1.6 + 8000 }),
       detail: `~${Math.round(words)} words, ~${scenes} scenes`,
     });
-    // Vision: ~6 candidate images per real-image scene at ~800 tokens each; ~55% of scenes need real images.
-    const visionScenes = Math.ceil(scenes * 0.55);
-    lines.push({
-      label: "Image verification (Claude vision)",
-      usd: claudeUsd(model, { input: visionScenes * 6 * 900, output: visionScenes * 500 }),
-      detail: `~${visionScenes} subjects`,
-    });
   } else {
     lines.push({ label: "Research, script & YouTube text (Claude app)", usd: 0, detail: "done in the Claude app, no API cost" });
+  }
+  // Vision: ~6 candidate images per real-image scene at ~800 tokens each; ~55% of scenes need real images.
+  const visionScenes = Math.ceil(scenes * 0.55);
+  const vision = o.vision ?? (api ? "claude" : "captions");
+  if (vision === "claude") {
+    lines.push({ label: "Image verification (Claude vision)", usd: claudeUsd(model, { input: visionScenes * 6 * 900, output: visionScenes * 500 }), detail: `~${visionScenes} subjects` });
+  } else if (vision === "gemini") {
+    lines.push({ label: "Image verification (Gemini)", usd: 0, detail: `~${visionScenes} requests on the free tier` });
   }
   // Voice: characters ≈ words × 6, plus ~15% for regeneration of off-length scenes.
   const chars = words * 6 * 1.15;

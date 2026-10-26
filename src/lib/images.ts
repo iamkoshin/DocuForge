@@ -1,4 +1,8 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import sharp from "sharp";
+import { run } from "./ffmpeg";
 
 export const MIN_LONG_SIDE = 800;
 
@@ -42,4 +46,26 @@ export function hamming(a: string, b: string) {
 /** Small JPEG for Claude vision (keeps tokens low) or UI thumbnails. */
 export async function smallJpeg(input: Buffer | string, longSide = 640) {
   return sharp(input).resize({ width: longSide, height: longSide, fit: "inside" }).jpeg({ quality: 78 }).toBuffer();
+}
+
+/**
+ * Convert an uploaded image in any format (HEIC, GIF, AVIF, TIFF, BMP, SVG…) to JPEG at full size.
+ * sharp handles most formats; ffmpeg covers the ones it can't (e.g. iPhone HEIC, BMP). Null if neither can read it.
+ */
+export async function anyImageToJpeg(file: string): Promise<Buffer | null> {
+  try {
+    // From memory, not the path: on Windows sharp keeps a file it opened locked, so it could not be deleted.
+    return await sharp(fs.readFileSync(file), { failOn: "none", pages: 1 }).rotate().flatten({ background: "#fff" }).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+  } catch {
+    /* try ffmpeg */
+  }
+  const out = path.join(os.tmpdir(), `narrative-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
+  try {
+    await run("ffmpeg", ["-y", "-loglevel", "error", "-i", file, "-frames:v", "1", "-q:v", "2", out], { timeoutMs: 60000 });
+    return fs.existsSync(out) && fs.statSync(out).size > 0 ? fs.readFileSync(out) : null;
+  } catch {
+    return null;
+  } finally {
+    fs.rmSync(out, { force: true });
+  }
 }

@@ -6,7 +6,7 @@ import { hashOf } from "@/lib/cache";
 import { DATA_DIR, ensureDir, ROOT } from "@/lib/paths";
 import type { RenderProps, RenderScene, Script, SfxEvent, VisualsResult, VoiceResult } from "@/lib/schemas";
 import { buildTimeline } from "@/lib/timeline";
-import { FPS, GAP } from "@/lib/timing";
+import { FPS } from "@/lib/timing";
 import type { MusicResult } from "./steps/music";
 import type { StepCtx } from "./context";
 
@@ -90,6 +90,13 @@ export function buildRenderProps(ctx: StepCtx): RenderProps {
         .map((id) => visuals.candidates[id])
         .filter(Boolean)
         .map((c) => ({ id: c.id, url: proj(c.file), type: c.type, width: c.width, height: c.height, durationSec: c.durationSec, focus: c.focus, caption: c.caption })),
+      // Flow-diagram boxes are prints, so a video candidate shows its still frame.
+      nodeAssets: sv?.nodes?.map((n) => {
+        const c = n.chosen ? visuals.candidates[n.chosen] : undefined;
+        if (!c) return null;
+        const file = c.type === "video" ? (c.thumb ?? c.file) : c.file;
+        return { id: c.id, url: proj(file), type: "image" as const, width: c.width, height: c.height, focus: c.focus, caption: c.caption };
+      }),
       data: s.data,
       climax: s.climax,
     };
@@ -107,11 +114,6 @@ export function buildRenderProps(ctx: StepCtx): RenderProps {
       else speech.push([a, b]);
     }
   });
-  // Silence as a tool: music drops out just before the biggest reveal.
-  const dropouts: [number, number][] = [];
-  script.scenes.forEach((s, i) => {
-    if (s.climax) dropouts.push([f(tl[i].voiceStart - (GAP.beforeClimax - 0.1)), f(tl[i].voiceStart)]);
-  });
 
   const vertical = ctx.options.format === "9:16";
   return {
@@ -126,9 +128,9 @@ export function buildRenderProps(ctx: StepCtx): RenderProps {
     sfx: sfx.map((e) => ({ url: assetUrl(e.file), startFrame: e.startFrame, durationFrames: e.durationFrames, volume: e.volume, duck: e.duck })),
     music: music?.file ? { url: proj(music.file), durationFrames: durationInFrames } : undefined,
     speech,
-    dropouts,
-    musicBaseDb: -20,
-    pauseBoostDb: 5,
+    // Music is normalised to −14 LUFS. Editorial keeps it closer to the voice, like modern explainers.
+    musicBaseDb: ctx.options.theme === "editorial" ? -15 : -20,
+    pauseBoostDb: ctx.options.theme === "editorial" ? 4 : 5,
   };
 }
 

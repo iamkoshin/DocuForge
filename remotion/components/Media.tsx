@@ -1,6 +1,7 @@
 import React from "react";
 import { AbsoluteFill, Easing, Img, interpolate, OffthreadVideo, Sequence, useCurrentFrame, useVideoConfig } from "remotion";
 import type { RenderAsset } from "../../src/lib/schemas";
+import { shotPlan } from "../../src/lib/timing";
 import { useTheme } from "./layout";
 
 export function gradeFilter(g: { saturate: number; contrast: number; sepia: number; brightness: number }) {
@@ -51,12 +52,12 @@ export const KenBurns: React.FC<{ asset: RenderAsset; durationInFrames: number; 
 
 /** Background media for a scene: alternates between its assets so the picture changes every few seconds. */
 export const MediaLayer: React.FC<{ assets: RenderAsset[]; durationInFrames: number; dim?: number; seed?: number }> = ({ assets, durationInFrames, dim = 0, seed = 0 }) => {
-  const { fps } = useVideoConfig();
+  const theme = useTheme();
   if (!assets.length) return null;
-  // Change shot every 2–4 s when we have more than one asset.
-  const shots = assets.length > 1 ? Math.max(1, Math.min(assets.length * 2, Math.round(durationInFrames / (fps * 3)))) : 1;
-  const len = Math.ceil(durationInFrames / shots);
-  const fade = Math.min(8, Math.floor(len / 4));
+  // Same plan the sound planner uses, so each cut gets its sound. Editorial cuts hard every ~1.5 s.
+  const fast = theme.style === "editorial";
+  const { shots, len } = shotPlan(durationInFrames, assets.length, fast);
+  const fade = fast ? 0 : Math.min(8, Math.floor(len / 4));
   return (
     <AbsoluteFill>
       {Array.from({ length: shots }, (_, i) => (

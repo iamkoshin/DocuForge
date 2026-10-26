@@ -13,8 +13,14 @@ export interface Settings {
   defaultTheme: string;
   defaultSfxLevel: string;
   ttsModel: string;
+  voiceSpeed: number; // ElevenLabs speed, 0.7–1.2 (1 = natural)
   musicModel: string;
   renderConcurrency: number;
+  // Who checks found photos and matches uploads: "auto" = Claude when the project uses the Claude API,
+  // otherwise Gemini if GEMINI_API_KEY is set; "gemini" = always Gemini; "captions" = no AI, match by caption/file name.
+  photoCheck: "auto" | "gemini" | "captions";
+  geminiModels: string[]; // tried in order; when one hits its free limit the next takes over
+  creditUnsplash: boolean; // list Unsplash photographers under "Image credits" in youtube.md (optional under the Unsplash License)
   costThresholdUsd: number;
   // Rough $ conversion rates used for estimates (ElevenLabs bills in credits; adjust to your plan).
   elevenUsdPer1kChars: number;
@@ -29,8 +35,12 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultTheme: "investigative",
   defaultSfxLevel: "normal",
   ttsModel: "eleven_multilingual_v2",
+  voiceSpeed: 1,
   musicModel: "music_v1",
   renderConcurrency: 4,
+  photoCheck: "auto",
+  geminiModels: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest"],
+  creditUnsplash: true,
   costThresholdUsd: 10,
   elevenUsdPer1kChars: 0.22,
   elevenUsdPerMusicMinute: 0.5,
@@ -61,7 +71,7 @@ export function updateSettings(patch: Partial<Settings>) {
   return getSettings();
 }
 
-export type KeyName = "ANTHROPIC_API_KEY" | "ELEVENLABS_API_KEY" | "PIXABAY_API_KEY";
+export type KeyName = "ANTHROPIC_API_KEY" | "ELEVENLABS_API_KEY" | "PIXABAY_API_KEY" | "UNSPLASH_ACCESS_KEY" | "GEMINI_API_KEY";
 export function getKey(name: KeyName): string {
   const v = process.env[name];
   if (!v) throw new ConfigError(`${name} is not set. Add it to .env and restart (npm run dev).`);

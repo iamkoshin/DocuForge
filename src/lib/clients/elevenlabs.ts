@@ -61,6 +61,7 @@ export async function ttsWithTimestamps(p: {
   previousText?: string;
   nextText?: string;
   languageCode?: string;
+  speed?: number; // 0.7–1.2
 }): Promise<{ audio: Buffer; alignment: Alignment }> {
   const limit = TTS_CHAR_LIMITS[p.modelId] ?? 5000;
   if (p.text.length > limit) throw new Error(`Scene text is ${p.text.length} chars; ${p.modelId} allows ${limit} per request`);
@@ -69,7 +70,7 @@ export async function ttsWithTimestamps(p: {
     model_id: p.modelId,
     previous_text: p.previousText || undefined,
     next_text: p.nextText || undefined,
-    voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true, speed: 1 },
+    voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true, speed: Math.min(1.2, Math.max(0.7, p.speed ?? 1)) },
   };
   // language_code is not supported by multilingual_v2 (it auto-detects).
   if (p.languageCode && p.modelId !== "eleven_multilingual_v2") body.language_code = p.languageCode;

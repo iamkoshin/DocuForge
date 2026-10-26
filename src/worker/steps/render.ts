@@ -33,10 +33,11 @@ export const previewStep: StepDef = {
 
 export const renderStep: StepDef = {
   name: "render",
-  inputs: (ctx) => ({ props: ctx.hash("project.json"), concurrency: ctx.settings.renderConcurrency }),
+  inputs: (ctx) => ({ props: ctx.hash("project.json"), concurrency: ctx.settings.renderConcurrency, musicVolume: ctx.options.musicVolume ?? 0 }),
   async run(ctx) {
-    const props = ctx.read<RenderProps>("project.json");
-    if (!props) throw new Error("project.json missing — run Preview first");
+    const saved = ctx.read<RenderProps>("project.json");
+    if (!saved) throw new Error("project.json missing — run Preview first");
+    const props = { ...saved, musicBaseDb: saved.musicBaseDb + (ctx.options.musicVolume ?? 0) };
     const raw = ctx.file("render-raw.mp4");
     const started = Date.now();
     await renderVideo(ctx, props, raw, (p, stage) => ctx.progress(p * 0.92, `${stage === "muxing" ? "Muxing" : "Rendering"} ${Math.round(p * 100)}%`));

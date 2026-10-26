@@ -1,9 +1,11 @@
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import * as z from "zod";
 import { cachedJson, hashOf } from "@/lib/cache";
 import { claudeJson } from "@/lib/clients/anthropic";
 import { ttsWithTimestamps, type Alignment } from "@/lib/clients/elevenlabs";
-import { probeDuration } from "@/lib/ffmpeg";
+import { shiftTime, tightenSpeech } from "@/lib/ffmpeg";
 import { mapLimit } from "@/lib/http";
 import { ensureDir } from "@/lib/paths";
 import { usesClaudeApi } from "@/lib/mode";
@@ -45,8 +47,10 @@ async function synthScene(ctx: StepCtx, script: Script, i: number): Promise<Voic
   const voiceId = ctx.options.voiceId;
   const model = ctx.settings.ttsModel;
   const languageCode = LANG_CODES[ctx.options.language.toLowerCase()];
+  const speed = ctx.settings.voiceSpeed;
   // Cache key deliberately excludes neighbouring text: changing one scene re-voices only that scene.
-  const key = { voiceId, model, text: s.narration, languageCode };
+  // (speed is only part of the key when changed, so existing voiceovers stay cached.)
+  const key = { voiceId, model, text: s.narration, languageCode, ...(speed !== 1 ? { speed } : {}) };
   const { value, hit } = await cachedJson("tts", key, async () => {
     const r = await ttsWithTimestamps({
       voiceId,
@@ -55,6 +59,7 @@ async function synthScene(ctx: StepCtx, script: Script, i: number): Promise<Voic
       previousText: script.scenes[i - 1]?.narration,
       nextText: script.scenes[i + 1]?.narration,
       languageCode,
+      speed,
     });
     addCost({
       projectId: ctx.id,
@@ -69,11 +74,20 @@ async function synthScene(ctx: StepCtx, script: Script, i: number): Promise<Voic
   });
   const textHash = hashOf(key);
   const rel = `voice/${s.id}-${textHash}.mp3`;
-  const abs = ctx.file(rel);
-  if (!fs.existsSync(abs)) fs.writeFileSync(abs, Buffer.from(value.audio, "base64"));
-  const duration = await probeDuration(abs);
-  const words = alignmentToWords(value.alignment);
-  if (!hit) ctx.info(`Voiced ${s.id} (${duration.toFixed(1)}s)`);
+  // ElevenLabs leaves silence before/after each clip and long pauses between sentences; cut it so the
+  // narration flows without dead air, and shift the word timings to match.
+  const raw = path.join(os.tmpdir(), `narrative-${ctx.id}-${s.id}-${textHash}.mp3`);
+  fs.writeFileSync(raw, Buffer.from(value.audio, "base64"));
+  let duration: number;
+  let words = alignmentToWords(value.alignment);
+  try {
+    const t = await tightenSpeech(raw, ctx.file(rel));
+    duration = t.duration;
+    words = words.map((w) => ({ ...w, start: shiftTime(w.start, t.removed), end: Math.min(t.duration, shiftTime(w.end, t.removed)) }));
+    if (!hit) ctx.info(`Voiced ${s.id} (${duration.toFixed(1)}s, ${t.removed.reduce((a, [x, y]) => a + y - x, 0).toFixed(1)}s of silence removed)`);
+  } finally {
+    fs.rmSync(raw, { force: true });
+  }
   return { sceneId: s.id, file: rel, duration, words, textHash };
 }
 
@@ -112,7 +126,7 @@ CLAIMS:\n${JSON.stringify(research?.claims.map((c) => ({ id: c.id, text: c.text 
 
 export const voiceStep: StepDef = {
   name: "voice",
-  inputs: (ctx) => ({ script: ctx.hash("script.json"), voice: ctx.options.voiceId, model: ctx.settings.ttsModel, lang: ctx.options.language }),
+  inputs: (ctx) => ({ script: ctx.hash("script.json"), voice: ctx.options.voiceId, model: ctx.settings.ttsModel, lang: ctx.options.language, speed: ctx.settings.voiceSpeed, tight: 1 }),
   async run(ctx) {
     let script = ctx.read<Script>("script.json");
     if (!script) throw new Error("script.json missing");

@@ -9,7 +9,7 @@ import type { ProjectOptions, Research, Script } from "../src/lib/schemas";
 
 const options: ProjectOptions = {
   topic: "The collapse of FTX", angle: "", minutes: 0.5, format: "16:9", voiceId: "test", voiceName: "test", language: "English",
-  tone: "Investigative", theme: "investigative", musicMood: "none", sfxLevel: "normal", sourceUrls: [], pauseForApproval: true, scriptSource: "app", ownScript: "",
+  tone: "Investigative", theme: "investigative", musicMood: "none", musicVolume: 0, sfxLevel: "normal", sourceUrls: [], pauseForApproval: true, scriptSource: "app", ownScript: "",
 };
 const id = createProject(options, 0);
 console.log("project", id);
